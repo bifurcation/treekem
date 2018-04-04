@@ -1,0 +1,6 @@
+# Ignore files installed by npm
+node_modules
+
+# Ignore dist files, but keep the directory
+dist/*
+!dist/.gitkeep
