@@ -13,7 +13,7 @@
     }
   ],
   "scripts": {
-    "watch": "watchify src/main.js -o dist/index.js -v",
+    "watch": "watchify src/*.js -o dist/index.js -v",
     "build": "browserify src/main.js -o dist/index.js"
   }
 }
