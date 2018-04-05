@@ -1,9 +1,4 @@
-const ECKEM = require('./eckem');
-const iota = require('./iota');
-const TKEM = require('./TKEM');
-
-window.TKEM = {
-  ECKEM: ECKEM,
-  iota: iota,
-  TKEM: TKEM,
-}
+window.ECKEM = require('./eckem');
+window.iota = require('./iota');
+window.tm = require('./tree-math');
+window.TKEM = require('./TKEM');

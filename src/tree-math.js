@@ -315,4 +315,6 @@ module.exports = {
   dirpath: dirpath,
   copath: copath,
   leaves: leaves,
+
+  test: test,
 }

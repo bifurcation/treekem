@@ -1,6 +1,6 @@
 'use strict';
 
-const cs = crypto.subtle;
+const cs = window.crypto.subtle;
   
 const ECDH_KEY_USAGES = ["deriveKey"];
 const AES_GCM_KEY_USAGES = ["encrypt", "decrypt"];

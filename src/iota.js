@@ -17,7 +17,7 @@ function bn2b64(n) {
                .replace(/\//g, '_');
 }
 
-function bin2jwk(val) { 
+function bin2jwk(val) {
   const arr = Array.from(new Uint8Array(val));
   const hex = arr.map(x => ('0' + x.toString(16)).slice(-2)).join("");
   const priv = new BN(hex, 16);
@@ -45,11 +45,9 @@ function jwk2wc(pair) {
   return cs.importKey("jwk", pair.priv, alg, false, ["deriveKey", "deriveBits"])
     .then(k => {
       priv = k;
-      console.log("[jwk2kp] got private key", priv);
       return cs.importKey("jwk", pair.pub, alg, true, []);
     })
     .then(pub => {
-      console.log("[jwk2kp] got public key", pub);
       return {privateKey: priv, publicKey: pub};
     });
 }

@@ -4,6 +4,17 @@
 <head>
 <title>TKEM</title>
 <script src="dist/index.js"></script>
+<script>
+
+const ok = (x => { window.pout = x; console.log("ok", x); });
+const err = (x => { window.pout = x; console.log("err", x); });
+
+function hex(ab) {
+  let arr = Array.from(new Uint8Array(ab));
+  return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
+}
+
+</script>
 </head>
 
 <body>
