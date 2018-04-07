@@ -10,7 +10,11 @@ function hash(x) {
 }
 
 class TKEM {
-  constructor(/* TODO */) {}
+  constructor(/* TODO */) {
+    this.size = 0;
+    this.index = 0;
+    this.nodes = [];
+  }
 
   /*
    * Encrypts a fresh root value in a way that all participants in
@@ -24,8 +28,11 @@ class TKEM {
    *     // Index of the sender in the tree
    *     index: Int
    *
-   *     // Public keys along the direct path
-   *     publicKeys: [ CryptoKey ]
+   *     // Public nodes along the direct path
+   *     nodes: { Int: Node }
+   *
+   *     // Private nodes along the direct path
+   *     privateNodes: { Int: Node }
    *
    *     // Ciphertexts along the copath
    *     ciphertexts: [ ECKEMCiphertext ]
@@ -40,20 +47,26 @@ class TKEM {
     // * convert to public key
     // * KEM to corresponding copath node
     let h = leaf;
-    let hashes = [];
-    let publicKeys = [];
+    let nodes = {};
+    let privateNodes = {};
     let ciphertexts = [];
     for (let i = 0; i < dirpath.length; ++i) {
+      let kp = await iota(h);
+      nodes[dirpath[i]] = { public: kp.publicKey };
+      privateNodes[dirpath[i]] = {
+        public: kp.publicKey,
+        private: kp.privateKey,
+      };
+
       h = await hash(h); 
-      hashes[i] = h;
-      publicKeys[i] = (await iota(h)).publicKey;
       ciphertexts[i] = await ECKEM.encrypt(h, this.nodes[copath[i]].public);
     }
 
     return {
-      root: hashes[hashes.length - 1],
+      root: h,
       index: this.index,
-      publicKeys: publicKeys,
+      nodes: nodes,
+      privateNodes: privateNodes,
       ciphertexts: ciphertexts,
     }; 
   }
@@ -70,8 +83,8 @@ class TKEM {
    *     // The root hash for the tree
    *     root: ArrayBuffer
    *
-   *     // Hashes for other nodes
-   *     hashes: { Int: ArrayBuffer }
+   *     // Public nodes resulting from hashes on the direct path
+   *     nodes: { Int: Node }
    *   }
    */
   async decrypt(index, ciphertexts) {
@@ -85,31 +98,38 @@ class TKEM {
     let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
 
     // Hash up to the root
-    let hashes = {};
+    let nodes = {};
     let root = tm.root(this.size);
     let hashPath = dirpath.slice(dirIndex+1);
     hashPath.push(root);
     for (const n of hashPath) {
-      hashes[n] = h;
+      let keyPair = await iota(h);
+      nodes[n] = {
+        secret: h,
+        private: keyPair.privateKey,
+        public: keyPair.publicKey,
+      }
       h = await hash(h);
     }
 
     return {
-      root: hashes[root],
-      hashes: hashes,
+      root: nodes[root].secret,
+      nodes: nodes,
     }
   }
 
   /*
-   * Updates public keys along a path.
+   * Updates nodes in the tree.
    *
    * Arguments:
-   *   * index      - Index of sending node in the tree
-   *   * publicKeys - List of CryptoKey values along direct path
+   *   nodes - Dictionary of nodes to udpate: { Int: Node }
+   *
+   * Returns: None
    */
-  update(index, publicKeys) {
-    let dirpath = tm.dirpath(index, this.size);
-    dirpath.map((n, i) => { this.nodes[n].public = publicKeys[i]; });
+  merge(nodes) {
+    for (let n in nodes) {
+      this.nodes[n] = nodes[n];
+    }
   }
 }
 
@@ -122,12 +142,6 @@ function arrayBufferEqual(a, b) {
 async function test() {
   let size = 5;
   let nodeWidth = tm.nodeWidth(size);
-  let members = [];
-  for (let i = 0; i < size; ++i) {
-    members[i] = new TKEM();
-    members[i].size = size;
-    members[i].index = i;
-  }
 
   // Values you should see on inspection:
   // h^0 = 00010203
@@ -137,8 +151,35 @@ async function test() {
   // h^4 = 858b98df0255fbd305d9b772e19159e3f92b5ed7a458c549040f4d6331b5ea19 <-- too far
   let seed = new Uint8Array([0,1,2,3]);
   let keyPairs = await Promise.all([...Array(nodeWidth).keys()].map(i => iota(new Uint8Array([i]))));
-  let nodes = keyPairs.map(kp => { return { private: kp.privateKey, public: kp.publicKey }; });
-  members.map(m => { m.nodes = nodes; });
+  let nodes = {}
+  keyPairs.map((kp, i) => { 
+    nodes[i] = {
+      private: kp.privateKey, 
+      public: kp.publicKey 
+    };
+  });
+  
+  // Provision members
+  let members = [];
+  for (let i = 0; i < size; ++i) {
+    members[i] = new TKEM();
+    members[i].size = size;
+    members[i].index = i;
+
+    // Public keys along its copath
+    for (const n of tm.copath(2*i, size)) {
+      members[i].nodes[n] = {
+        public: nodes[n].public,
+      };
+    }
+
+    // Private keys along its direct path
+    for (const n of tm.dirpath(2*i, size)) {
+      members[i].nodes[n] = {
+        private: nodes[n].private,
+      };
+    }
+  }
 
   // Have each member send and be received by all members
   for (const m of members) {
@@ -154,7 +195,13 @@ async function test() {
         console.log("error:", m.index, "->", m2.index);
         throw 'tkem';
       }
+
+      // Merge public values, then private
+      m2.merge(ct.nodes);
+      m2.merge(pt.nodes);
     }
+
+    m.merge(ct.privateNodes);
   }
 
   console.log("[tkem-encrypt-decrypt] PASS");
