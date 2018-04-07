@@ -35,24 +35,20 @@ function AES_GCM_ENC(iv) {
  *     ct: BufferSource
  *   }
  */
-function encrypt(plaintext, pubA) {
-  let pubE;
-  let iv;
-  return cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES)
-    .then(kp => {
-      pubE = kp.publicKey;
-      let alg = ECDH_DERIVE(pubA);
-      alg.public = pubA;
-      return cs.deriveKey(alg, kp.privateKey, AES_GCM_GEN, false, AES_GCM_KEY_USAGES);
-    })
-    .then(k => {
-      let alg = AES_GCM_ENC();
-      iv = alg.iv;
-      return cs.encrypt(alg, k, plaintext);
-    })
-    .then(ct => {
-      return {pub: pubE, iv: iv, ct: ct};
-    })
+async function encrypt(plaintext, pubA) {
+  const kpE = await cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES);
+
+  const dhAlg = ECDH_DERIVE(pubA);
+  const ek = await cs.deriveKey(dhAlg, kpE.privateKey, AES_GCM_GEN, false, AES_GCM_KEY_USAGES);
+  
+  const aesAlg = AES_GCM_ENC();
+  const ct = await cs.encrypt(aesAlg, ek, plaintext);
+
+  return {
+    pub: kpE.publicKey,
+    iv: aesAlg.iv,
+    ct: ct,
+  };
 }
 
 /*
@@ -62,37 +58,32 @@ function encrypt(plaintext, pubA) {
  *
  * Returns: Promise<ArrayBuffer>
  */
-function decrypt(ciphertext, priv) {
-  let alg = ECDH_DERIVE(ciphertext.pub);
-  return cs.deriveKey(alg, priv, AES_GCM_GEN, false, AES_GCM_KEY_USAGES)
-    .then(k => {
-      let alg = AES_GCM_ENC(ciphertext.iv);
-      return cs.decrypt(alg, k, ciphertext.ct);
-    });
+async function decrypt(ciphertext, priv) {
+  const dhAlg = ECDH_DERIVE(ciphertext.pub);
+  const ek = await cs.deriveKey(dhAlg, priv, AES_GCM_GEN, false, AES_GCM_KEY_USAGES);
+
+  const aesAlg = AES_GCM_ENC(ciphertext.iv);
+  return cs.decrypt(aesAlg, ek, ciphertext.ct);
 }
 
 /*
  * Self-test: Encrypt/decrypt round trip
  */
-function test() {
+async function test() {
   let keyPair;
   const original = new Uint8Array([0,1,2,3]);
 
-  cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES)
-    .then(kp => {
-      keyPair = kp;
-      return encrypt(original, keyPair.publicKey);
-    })
-    .then(encrypted => {
-      return decrypt(encrypted, keyPair.privateKey);
-    })
-    .then(decrypted => {
-      let equal = (Array.from(decrypted).filter((x,i) => (original[i] != x)).length == 0)
-      console.log("[ECKEM]", equal? "PASS" : "FAIL");
-    })
-    .catch(err => {
-      console.log("[ECKEM] FAIL:", err);
-    });
+  const kp = await cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES);
+
+  try {
+    const encrypted = await encrypt(original, kp.publicKey);
+    const decrypted = await decrypt(encrypted, kp.privateKey);
+    
+    const equal = (Array.from(decrypted).filter((x,i) => (original[i] != x)).length == 0)
+    console.log("[ECKEM]", equal? "PASS" : "FAIL");
+  } catch (err) {
+    console.log("[ECKEM] FAIL:", err);
+  }
 }
 
 module.exports = {
