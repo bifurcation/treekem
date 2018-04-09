@@ -124,8 +124,13 @@ class TKEM {
    *   }
    */
   async decrypt(index, ciphertexts) {
+    // These are the nodes that the sender encrypted to
+    let senderSize = (index == this.size)? this.size + 1 : this.size;
+    let copath = tm.copath(2 * index, senderSize);
+
+    // These are the nodes that we should have private keys for
     let dirpath = tm.dirpath(2 * this.index, this.size);
-    let copath = tm.copath(2 * index, this.size);
+    dirpath.push(tm.root(this.size));
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
@@ -133,11 +138,15 @@ class TKEM {
     let dirIndex = dirpath.indexOf(overlap);
     let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
 
-    // Hash up to the root
+    // Hash up to the root (plus one if we're growing the tree)
     let nodes = {};
     let root = tm.root(this.size);
     let hashPath = dirpath.slice(dirIndex+1);
-    hashPath.push(root);
+    if (senderSize > this.size) {
+      root = tm.root(senderSize)
+      hashPath.push(root);
+    }
+
     for (const n of hashPath) {
       let keyPair = await iota(h);
       nodes[n] = {
@@ -153,6 +162,7 @@ class TKEM {
     let hue = ha.reduce((x, y) => x ^ y);
     dirpath.push(root);
     let dl = Math.round((FADESTOP - FADESTART) / dirpath.length);
+    
     for (let i = dirpath.length - 1; i >= 0; --i) {
       let l = FADESTART + i * dl;
       let color = `hsl(${hue}, 100%, ${l}%)`;
@@ -181,6 +191,17 @@ class TKEM {
     for (let n in nodes) {
       this.nodes[n] = nodes[n];
     }
+  }
+
+  /*
+   * Returns the nodes on the frontier of the tree { Int: Node }
+   */
+  frontier() {
+    let nodes = {};
+    for (let n of tm.frontier(this.size)) {
+      nodes[n] = this.nodes[n];
+    }
+    return nodes;
   }
 
   /*
@@ -341,7 +362,39 @@ async function testMembers(size) {
   return members;
 }
 
-async function test() {
+async function testTwo() {
+  // Initialize a one-node tree
+  // XXX(RLB): This should just become the default ctor
+  let m0 = new TKEM();
+  m0.size = 1;
+  let ct0 = await m0.encrypt(new Uint8Array([0]));
+  m0.merge(ct0.privateNodes);
+
+  // Initialize a second tree
+  let m1 = new TKEM();
+  m1.size = m0.size + 1;
+  m1.index = m1.size - 1;
+  m1.merge(m0.frontier());
+  let ct1 = await m1.encrypt(new Uint8Array([1]));
+  m1.merge(ct1.privateNodes);
+
+  // Process the add at the first tree
+  let pt1 = await m0.decrypt(ct1.index, ct1.ciphertexts);
+  m0.merge(ct1.nodes);
+  m0.merge(pt1.nodes);
+  m0.size += 1;
+
+  let eq = await m0.equal(m1);
+  if (!eq) {
+    window.m0 = m0;
+    window.m1 = m1;
+    throw 'tkem-user-add';
+  }
+
+  console.log("[tkem-user-add] PASS")
+}
+
+async function testUpdate() {
   const testGroupSize = 5;
 
   // Values you should see on inspection:
@@ -359,11 +412,6 @@ async function test() {
   for (const m of members) {
     let ct = await m.encrypt(seed);
     m.merge(ct.privateNodes);
-
-    let eq = await m.equal(m);
-    if (!eq) {
-      throw 'uhhh, m != m';
-    }
 
     for (let m2 of members) {
       if (m2.index == m.index) {
@@ -394,5 +442,6 @@ async function test() {
 module.exports = {
   class: TKEM,
   testMembers: testMembers,
-  test: test,
+  testUpdate: testUpdate,
+  testTwo: testTwo,
 };
