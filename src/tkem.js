@@ -7,22 +7,96 @@ const cs = window.crypto.subtle;
 
 const SVG = require('svg.js');
 
+function hex(ab) {
+  const arr = Array.from(new Uint8Array(ab));
+  return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
+}
+
 function hash(x) {
   return cs.digest("SHA-256", x);
 }
 
-const FADESTART = 80;
-const FADESTOP = 20;
+const FADESTART = 20;
+const FADESTOP = 80;
+
+async function hashUp(index, size, h) {
+  // Compute hashes up the tree
+  let nodes = {};
+  let n = index;
+  let root = tm.root(size);
+  let path = [n];
+  while (true) {
+    let kp = await iota(h);
+    nodes[n] = {
+      secret: h,
+      public: kp.publicKey,
+      private: kp.privateKey,
+    };
+
+    if (n == root) {
+      break;
+    }
+
+    n = tm.parent(n, size);
+    path.push(n);
+    h = await hash(h);
+  }
+
+  // Colorize the nodes
+  // #ifdef COLORIZE
+  let height = tm.level(root);
+  let hue = Array.from(new Uint8Array(nodes[root].secret)).reduce((x, y) => x ^ y);
+  let dl = Math.round((FADESTOP - FADESTART) / height);
+  for (let i = 0; i < path.length; ++i) {
+    let l = FADESTART + i * dl;
+    let color = `hsl(${hue}, 100%, ${l}%)`;
+    nodes[path[path.length - i - 1]].color = color;
+  }
+  // #endif /* def COLORIZE */
+
+  return nodes;
+}
 
 class TKEM {
-  constructor(/* TODO */) {
+  /*
+   * TKEM objects should not be constructed directly.  Instead, use
+   * the `TKEM.fromX` factory methods.  This only exists to give
+   * certain variables public exposure for debugging, and as a base
+   * for the factory methods.  It would be private in C++.
+   */
+  constructor() {
     this.size = 0;
     this.index = 0;
     this.nodes = [];
   }
 
   /*
-   * Encrypts a fresh root value in a way that all participants in
+   * Construct a TKEM representing a group with a single member,
+   * with the given leaf secret.
+   */
+  static async oneMemberGroup(leaf) {
+    let tkem = new TKEM();
+    tkem.size = 1;
+    tkem.index = 0;
+    tkem.merge(await hashUp(0, 1, leaf));
+    return tkem;
+  }
+
+  /*
+   * Construct a tree that extends a tree with the given size and
+   * frontier by adding a member with the given leaf secret.
+   */
+  static async fromFrontier(size, frontier, leaf) {
+    let tkem = new TKEM();
+    tkem.size = size + 1;
+    tkem.index = size;
+    tkem.merge(frontier);
+    tkem.merge(await hashUp(2 * tkem.index, tkem.size, leaf));
+    return tkem;
+  }
+
+  /*
+   * Encrypt a fresh root value in a way that all participants in
    * the group can decrypt (except for the current node).
    *
    * Arguments:
@@ -48,59 +122,28 @@ class TKEM {
     let copath = tm.copath(2 * this.index, this.size);
     
     // Generate hashes up the tree
-    // For each hash:
-    // * convert to public key
-    // * KEM to corresponding copath node
-    let h = leaf;
+    let privateNodes = await hashUp(2 * this.index, this.size, leaf);
     let nodes = {};
-    let privateNodes = {};
-    let ciphertexts = [];
-    for (let i = 0; i < dirpath.length; ++i) {
-      let kp = await iota(h);
-      nodes[dirpath[i]] = { public: kp.publicKey };
-      privateNodes[dirpath[i]] = {
-        secret: h,
-        public: kp.publicKey,
-        private: kp.privateKey,
-      };
-
-      if (dirpath[i] == tm.root(this.size)) {
-        break;
-      }
-
-      h = await hash(h); 
-      ciphertexts[i] = await ECKEM.encrypt(h, this.nodes[copath[i]].public);
-    }
-
-    // Add a node for the root, even though it's not needed
-    let kp = await iota(h);
-    let root = tm.root(this.size);
-    nodes[root] = { public: kp.publicKey };
-    privateNodes[root] = {
-      secret: h,
-      public: kp.publicKey,
-      private: kp.privateKey,
-    };
-
-    // Assign a color and fade it back from the root
-    let ha = Array.from(new Uint8Array(h));
-    let hue = ha.reduce((x, y) => x ^ y);
-    dirpath.push(root);
-    let dl = Math.round((FADESTOP - FADESTART) / dirpath.length);
-    for (let i = dirpath.length - 1; i >= 0; --i) {
-      let l = FADESTART + i * dl;
-      let color = `hsl(${hue}, 100%, ${l}%)`;
-      
-      let n = dirpath[i];
-      privateNodes[n].color = color;
-      if (nodes[n]) {
-        nodes[n].color = color;
+    for (let n in privateNodes) {
+      nodes[n] = {
+        public: privateNodes[n].public,
+        // #ifdef COLORIZE
+        color: privateNodes[n].color,
+        // #endif /* def COLORIZE */
       }
     }
+
+    // KEM each hash to the corresponding copath node
+    let ciphertexts = await Promise.all(copath.map(async (c, i) => {
+      let p = tm.parent(c, this.size);
+      let s = privateNodes[p].secret;
+      return ECKEM.encrypt(s, this.nodes[c].public);
+    }));
 
     return {
-      root: h,
+      root: privateNodes[tm.root(this.size)].secret,
       index: this.index,
+      size: this.size,
       nodes: nodes,
       privateNodes: privateNodes,
       ciphertexts: ciphertexts,
@@ -134,51 +177,45 @@ class TKEM {
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
-
-    console.log(dirpath, copath, overlap);
-
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
     let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
 
     // Hash up to the root (plus one if we're growing the tree)
-    let nodes = {};
-    let root = tm.root(this.size);
-    let hashPath = dirpath.slice(dirIndex+1);
-    if (senderSize > this.size) {
-      root = tm.root(senderSize)
-      hashPath.push(root);
-    }
+    let nodes = await hashUp(dirpath[dirIndex+1], senderSize, h);
 
-    for (const n of hashPath) {
-      let keyPair = await iota(h);
-      nodes[n] = {
-        secret: h,
-        private: keyPair.privateKey,
-        public: keyPair.publicKey,
-      }
-      h = await hash(h);
-    }
-
-    // Assign a color and fade it back from the root
-    let ha = Array.from(new Uint8Array(nodes[root].secret));
-    let hue = ha.reduce((x, y) => x ^ y);
-    dirpath.push(root);
-    let dl = Math.round((FADESTOP - FADESTART) / dirpath.length);
-    
-    for (let i = dirpath.length - 1; i >= 0; --i) {
-      let l = FADESTART + i * dl;
-      let color = `hsl(${hue}, 100%, ${l}%)`;
-      
-      let n = dirpath[i];
-      if (nodes[n]) {
-        nodes[n].color = color;
-      }
-    }
-
+    let root = tm.root(senderSize);
     return {
       root: nodes[root].secret,
       nodes: nodes,
+    }
+  }
+
+  /*
+   * Generate a UserAdd, which is just a FreshKey message with a
+   * tree size one bigger than the current tree.  The resulting
+   * message can be processed by decrypt().
+   */
+  static async userAdd(size, frontier, leaf) {
+    let tkem = await TKEM.fromFrontier(size, frontier, leaf);
+    return await tkem.encrypt(leaf);
+  }
+
+  /* 
+   * Generate a GroupAdd, which has (1) a FreshKey message for current
+   * members and (2) initialization information for the new member.
+   */
+  async groupAdd(initPub) {
+    let leaf = window.crypto.getRandomValues(new Uint8Array(32));
+    let freshKey = await TKEM.userAdd(this.size, this.frontier(), leaf);
+    let encryptedLeaf = await ECKEM.encrypt(leaf, initPub);
+    return {
+      forGroup: freshKey,
+      forJoiner: {
+        size: this.size,
+        frontier: this.frontier,
+        encryptedLeaf: encryptedLeaf,
+      },
     }
   }
 
@@ -232,6 +269,7 @@ class TKEM {
     return true;
   }
 
+  // #ifdef COLORIZE
   /********** SILLY DRAWING STUFF **********/
 
   /*
@@ -291,16 +329,15 @@ class TKEM {
     let index = [...Array(this.rects.length).keys()];
 
     let stroke = await Promise.all(index.map(async k => {
+      /*
       if (!this.nodes[k]) { 
-        console.log("hue-select:", this.index, k, "default");
         return DEFAULTSTROKE;
       } else if (this.nodes[k].color) {
-        console.log("hue-select:", this.index, k, "color", this.nodes[k].color);
         return this.nodes[k].color;
       } else {
-        console.log("hue-select:", this.index, k, "public", await hue(this.nodes[k].public));
         return await hue(this.nodes[k].public);
       }
+      */
 
       return (!this.nodes[k])? DEFAULTSTROKE
            : (this.nodes[k].color)? this.nodes[k].color
@@ -311,11 +348,10 @@ class TKEM {
       return (this.nodes[k] && this.nodes[k].private)? stroke[k] : DEFAULTFILL;
     });
 
-    console.log(stroke, fill);
-
     this.lines.map((line, k) => { line.stroke(stroke[k]); });
     this.rects.map((rect, k) => { rect.fill(fill[k]).stroke(stroke[k]); });
   }
+  // #endif /* def COLORIZE */
 }
 
 function arrayBufferEqual(a, b) {
@@ -368,18 +404,12 @@ async function testMembers(size) {
 async function testUserAdd() {
   // Initialize a one-node tree
   // XXX(RLB): This should just become the default ctor
-  let m0 = new TKEM();
-  m0.size = 1;
-  let ct0 = await m0.encrypt(new Uint8Array([0]));
-  m0.merge(ct0.privateNodes);
+  let m0 = await TKEM.oneMemberGroup(new Uint8Array([0]));
 
   // Initialize a second tree
-  let m1 = new TKEM();
-  m1.size = m0.size + 1;
-  m1.index = m1.size - 1;
-  m1.merge(m0.frontier());
-  let ct1 = await m1.encrypt(new Uint8Array([1]));
-  m1.merge(ct1.privateNodes);
+  let leaf = new Uint8Array([1]);
+  let m1 = await TKEM.fromFrontier(m0.size, m0.frontier(), leaf);
+  let ct1 = await TKEM.userAdd(m0.size, m0.frontier(), leaf);
 
   // Process the add at the first tree
   let pt1 = await m0.decrypt(ct1.index, ct1.ciphertexts);
@@ -396,56 +426,23 @@ async function testUserAdd() {
 }
 
 async function testGroupAdd() {
+  let initKP = await iota(new Uint8Array([2]));
+
   ///// MEMBER SEND /////
 
   // Initialize a one-node tree
-  // XXX(RLB): This should just become the default ctor
-  let m0 = new TKEM();
-  m0.size = 1;
-  let ct0 = await m0.encrypt(new Uint8Array([0]));
-  m0.merge(ct0.privateNodes);
-
-  // Simulate a UserAdd
-  let m1 = new TKEM();
-  m1.size = m0.size + 1;
-  m1.index = m1.size - 1;
-  m1.merge(m0.frontier());
-  let ct1 = await m1.encrypt(new Uint8Array([1]));
-  m1.merge(ct1.privateNodes);
-
-  // Encrypt the leaf secret to the new user
-  let initKP = await iota(new Uint8Array([2]));
-  let leafSecretIn = m1.nodes[2 * m1.index].secret;
-  let leafCT = await ECKEM.encrypt(leafSecretIn, initKP.publicKey);
+  let m0 = await TKEM.oneMemberGroup(new Uint8Array([0]));
+  let ga = await m0.groupAdd(initKP.publicKey);
 
   ///// NEW MEMBER RECV /////
 
-  // Initialize a tree from the frontier
-  let m2 = new TKEM();
-  m2.size = m0.size + 1;
-  m2.index = m2.size - 1;
-  m2.merge(m0.frontier());
-
-  // Decrypt the leaf secret and hash up the tree
-  let leafSecret = await ECKEM.decrypt(leafCT, initKP.privateKey);
-  let dirpath = tm.dirpath(2 * m2.index, m2.size);
-  dirpath.push(tm.root(m2.size));
-
-  let h = leafSecret;
-  for (let n of dirpath) {
-    let kp = await iota(h);
-    m2.nodes[n] = {
-      secret: h,
-      private: kp.privateKey,
-      public: kp.publicKey,
-    }
-
-    h = await hash(h);
-  }
+  // Decrypt the leaf secret and initialize a tree with it
+  let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
+  let m2 = await TKEM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
 
   ///// MEMBER RECV /////
-  let pt2 = await m0.decrypt(ct1.index, ct1.ciphertexts);
-  m0.merge(ct1.nodes);
+  let pt2 = await m0.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
+  m0.merge(ga.forGroup.nodes);
   m0.merge(pt2.nodes);
   m0.size += 1;
 
@@ -484,6 +481,8 @@ async function testUpdate() {
       let pt = await m2.decrypt(ct.index, ct.ciphertexts);
       if (!arrayBufferEqual(ct.root, pt.root)) {
         console.log("error:", m.index, "->", m2.index);
+        console.log("send:", hex(ct.root));
+        console.log("recv:", hex(pt.root));
         throw 'tkem-root';
       }
 
@@ -502,10 +501,17 @@ async function testUpdate() {
   console.log("[tkem-encrypt-decrypt] PASS");
 }
 
+async function test() {
+  await testUpdate();
+  await testUserAdd();
+  await testGroupAdd();
+}
+
 module.exports = {
   class: TKEM,
   testMembers: testMembers,
   testUpdate: testUpdate,
   testUserAdd: testUserAdd,
   testGroupAdd: testGroupAdd,
+  test: test,
 };
