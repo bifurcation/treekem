@@ -4,12 +4,13 @@
   "version": "0.0.0",
   "dependencies": {
     "bn.js": "^4.11.8",
-    "elliptic": "^6.4.0"
+    "elliptic": "^6.4.0",
+    "svg.js": "^2.6.4"
   },
-  "licenses" : [
+  "licenses": [
     {
-      "type" : "MIT",
-      "url" : "http://www.opensource.org/licenses/mit-license.php"
+      "type": "MIT",
+      "url": "http://www.opensource.org/licenses/mit-license.php"
     }
   ],
   "scripts": {

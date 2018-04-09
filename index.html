@@ -3,18 +3,64 @@
 
 <head>
 <title>TKEM</title>
-<script src="dist/index.js"></script>
+<script src="./dist/index.js"></script>
+<script src="./web/svg.js"></script>
 <script>
 
 const ok = (x => { window.pout = x; console.log("ok", x); });
 const err = (x => { window.pout = x; console.log("err", x); });
 
 function hex(ab) {
-  let arr = Array.from(new Uint8Array(ab));
+  const arr = Array.from(new Uint8Array(ab));
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
 }
 
+let members;
+
+async function initMembers(n) {
+  members = await TKEM.testMembers(n);
+  
+  for (let i=0; i<n; ++i) {
+    let div = document.createElement("div");
+    div.id = "tree" + i;
+    document.body.appendChild(div);
+
+    members[i].renderInit(div.id);
+    members[i].render();
+  }
+}
+
+async function update(k) {
+  let seed = crypto.getRandomValues(new Uint8Array(32));
+  let ct = await members[k].encrypt(seed);
+  
+  for (m2 of members) {
+    if (m2.index == k) {
+      continue;
+    }
+
+    let pt = await m2.decrypt(ct.index, ct.ciphertexts);
+    m2.merge(ct.nodes);
+    m2.merge(pt.nodes);
+    m2.render();
+  }
+
+  console.log("private", ct.privateNodes);
+  console.log("public", ct.nodes);
+
+  members[k].merge(ct.privateNodes);
+  members[k].render();
+}
+
 </script>
+<style>
+div {
+  float: left;
+  margin: 1ex;
+  padding: 1ex;
+  border: 1px solid black;
+}
+</style>
 </head>
 
 <body>

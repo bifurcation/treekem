@@ -1,3 +1,5 @@
+'use strict';
+
 function log2(x) {
   if (x == 0) {
     return 0;
@@ -11,7 +13,7 @@ function level(x) {
     return 0;
   }
 
-  k = 0;
+  let k = 0;
   while (((x >> k) & 0x01) == 1) {
     k += 1;
   }
@@ -23,7 +25,7 @@ function nodeWidth(n) {
 }
 
 function root(n) {
-  w = nodeWidth(n);
+  let w = nodeWidth(n);
   return (1 << log2(w)) - 1;
 }
 
@@ -40,7 +42,7 @@ function right(x, n) {
     return x;
   }
 
-  r = x ^ (0x03 << (level(x) - 1));
+  let r = x ^ (0x03 << (level(x) - 1));
   while (r >= nodeWidth(n)) {
     r = left(r);
   }
@@ -49,8 +51,7 @@ function right(x, n) {
 
 function parentStep(x) {
   const k = level(x);
-  one = 1;
-  return (x | (one << k)) & ~(one << (k + 1));
+  return (x | (1 << k)) & ~(1 << (k + 1));
 }
 
 function parent(x, n) {
@@ -86,7 +87,7 @@ function dirpath(x, n) {
 
   let d = [x];
   let p = parent(x, n);
-  const r = root(n);
+  let r = root(n);
   while (p != r) {
     d.push(p);
     p = parent(p, n);
@@ -301,6 +302,7 @@ function test() {
 // Not everything needs to be exposed.
 module.exports = {
   // Basic tree properties
+  level: level,
   nodeWidth: nodeWidth,
   root: root,
   
