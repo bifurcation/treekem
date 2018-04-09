@@ -12,6 +12,12 @@ function hex(ab) {
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
 }
 
+async function fingerprint(pubKey) {
+  const spki = await cs.exportKey("spki", pubKey);
+  const digest = await cs.digest("SHA-256", spki);
+  return hex(digest);
+}
+
 function hash(x) {
   return cs.digest("SHA-256", x);
 }
@@ -91,7 +97,9 @@ class TKEM {
     tkem.size = size + 1;
     tkem.index = size;
     tkem.merge(frontier);
-    tkem.merge(await hashUp(2 * tkem.index, tkem.size, leaf));
+
+    let nodes = await hashUp(2 * tkem.index, tkem.size, leaf);
+    tkem.merge(nodes);
     return tkem;
   }
 
@@ -182,7 +190,9 @@ class TKEM {
     let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
 
     // Hash up to the root (plus one if we're growing the tree)
-    let nodes = await hashUp(dirpath[dirIndex+1], senderSize, h);
+    let newDirpath = tm.dirpath(2 * this.index, senderSize);
+    newDirpath.push(tm.root(senderSize));
+    let nodes = await hashUp(newDirpath[dirIndex+1], senderSize, h);
 
     let root = tm.root(senderSize);
     return {
@@ -205,15 +215,14 @@ class TKEM {
    * Generate a GroupAdd, which has (1) a FreshKey message for current
    * members and (2) initialization information for the new member.
    */
-  async groupAdd(initPub) {
-    let leaf = window.crypto.getRandomValues(new Uint8Array(32));
+  async groupAdd(leaf, initPub) {
     let freshKey = await TKEM.userAdd(this.size, this.frontier(), leaf);
     let encryptedLeaf = await ECKEM.encrypt(leaf, initPub);
     return {
       forGroup: freshKey,
       forJoiner: {
         size: this.size,
-        frontier: this.frontier,
+        frontier: this.frontier(),
         encryptedLeaf: encryptedLeaf,
       },
     }
@@ -252,21 +261,39 @@ class TKEM {
    */
   async equal(other) {
     async function nodeEqual(a, b) {
-      let spkiA = Array.from(new Uint8Array(await cs.exportKey("spki", a.publicKey)));
-      let spkiB = Array.from(new Uint8Array(await cs.exportKey("spki", a.publicKey)));
-      return spkiA.filter((x, i) => spkiB[i] == x).length == 0;
+      return fingerprint(a.public) == fingerprint(b.public);
     }
 
-    if (this.size != other.size) {
-      return false;
-    }
+    let answer = (this.size == other.size);
 
-    for (let n of this.nodes) {
-      if (this.nodes[n] && other.nodes[n] && !nodeEqual(this.nodes[n], other.nodes[n])) {
-        return false;
+    for (let n in this.nodes) {
+      let lhs = this.nodes[n];
+      let rhs = other.nodes[n];
+      if (!lhs || !rhs) {
+        continue;
       }
+
+      let lfp = await fingerprint(lhs.public);
+      let rfp = await fingerprint(rhs.public);
+      answer = answer && (lfp == rfp);
+
     }
-    return true;
+
+    return answer;
+  }
+
+  async dump(label) {
+    console.log("=====", label, "=====");
+    console.log("size:", this.size);
+    console.log("index:", this.index);
+    console.log("nodes:");
+    for (let n in this.nodes) {
+      if (!this.nodes[n]) {
+        continue;
+      }
+
+      console.log("  ", n, ":", await fingerprint(this.nodes[n].public));
+    }
   }
 
   // #ifdef COLORIZE
@@ -329,16 +356,6 @@ class TKEM {
     let index = [...Array(this.rects.length).keys()];
 
     let stroke = await Promise.all(index.map(async k => {
-      /*
-      if (!this.nodes[k]) { 
-        return DEFAULTSTROKE;
-      } else if (this.nodes[k].color) {
-        return this.nodes[k].color;
-      } else {
-        return await hue(this.nodes[k].public);
-      }
-      */
-
       return (!this.nodes[k])? DEFAULTSTROKE
            : (this.nodes[k].color)? this.nodes[k].color
            : await hue(this.nodes[k].public);
@@ -402,53 +419,71 @@ async function testMembers(size) {
 }
 
 async function testUserAdd() {
-  // Initialize a one-node tree
-  // XXX(RLB): This should just become the default ctor
-  let m0 = await TKEM.oneMemberGroup(new Uint8Array([0]));
+  const testGroupSize = 5;
+  
+  let creator = await TKEM.oneMemberGroup(new Uint8Array([0]));
+  let members = [creator];
 
-  // Initialize a second tree
-  let leaf = new Uint8Array([1]);
-  let m1 = await TKEM.fromFrontier(m0.size, m0.frontier(), leaf);
-  let ct1 = await TKEM.userAdd(m0.size, m0.frontier(), leaf);
+  let size = creator.size;
+  let frontier = creator.frontier();
+  for (let i = 1; i < testGroupSize; ++i) {
+    let leaf = new Uint8Array([i]);
+    let ua = await TKEM.userAdd(size, frontier, leaf); 
 
-  // Process the add at the first tree
-  let pt1 = await m0.decrypt(ct1.index, ct1.ciphertexts);
-  m0.merge(ct1.nodes);
-  m0.merge(pt1.nodes);
-  m0.size += 1;
+    // Instantiate joiner
+    let joiner = await TKEM.fromFrontier(size, frontier, leaf);
 
-  let eq = await m0.equal(m1);
-  if (!eq) {
-    throw 'tkem-user-add';
+    // Update other members
+    for (let m of members) {
+      let pt = await m.decrypt(ua.index, ua.ciphertexts);
+      m.merge(ua.nodes);
+      m.merge(pt.nodes);
+      m.size = ua.size;
+
+      let eq = await joiner.equal(m);
+      if (!eq) {
+        throw 'tkem-eq';
+      }
+    }
+
+    members.push(joiner);
+    size = joiner.size;
+    frontier = joiner.frontier();
   }
 
   console.log("[tkem-user-add] PASS")
 }
 
 async function testGroupAdd() {
-  let initKP = await iota(new Uint8Array([2]));
+  const testGroupSize = 5;
+  
+  let last = await TKEM.oneMemberGroup(new Uint8Array([0]));
+  let members = [last];
 
-  ///// MEMBER SEND /////
+  for (let i = 1; i < testGroupSize; ++i) {
+    let leafIn = new Uint8Array([i]);
+    let initKP = await iota(new Uint8Array([2]));
+    let ga = await last.groupAdd(leafIn, initKP.publicKey);
+    
+    // Instantiate joiner
+    let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
+    let joiner = await TKEM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
 
-  // Initialize a one-node tree
-  let m0 = await TKEM.oneMemberGroup(new Uint8Array([0]));
-  let ga = await m0.groupAdd(initKP.publicKey);
+    // Update other members
+    for (let m of members) {
+      let pt = await m.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
+      m.merge(ga.forGroup.nodes);
+      m.merge(pt.nodes);
+      m.size = ga.forGroup.size;
 
-  ///// NEW MEMBER RECV /////
+      let eq = await joiner.equal(m);
+      if (!eq) {
+        throw 'tkem-eq';
+      }
+    }
 
-  // Decrypt the leaf secret and initialize a tree with it
-  let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
-  let m2 = await TKEM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
-
-  ///// MEMBER RECV /////
-  let pt2 = await m0.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
-  m0.merge(ga.forGroup.nodes);
-  m0.merge(pt2.nodes);
-  m0.size += 1;
-
-  let eq = await m0.equal(m2);
-  if (!eq) {
-    throw 'tkem-group-add';
+    members.push(joiner);
+    last = joiner;
   }
 
   console.log("[tkem-group-add] PASS")

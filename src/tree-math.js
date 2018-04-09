@@ -24,6 +24,12 @@ function nodeWidth(n) {
   return 2 * (n - 1) + 1;
 }
 
+function assertInRange(x, n) {
+  if (x > nodeWidth(n)) {
+    throw `node index out of range (${x} > ${n})`;
+  }
+}
+
 function root(n) {
   let w = nodeWidth(n);
   return (1 << log2(w)) - 1;
@@ -38,6 +44,8 @@ function left(x) {
 }
 
 function right(x, n) {
+  assertInRange(x, n);
+
   if (level(x) == 0) {
     return x;
   }
@@ -55,6 +63,8 @@ function parentStep(x) {
 }
 
 function parent(x, n) {
+  assertInRange(x, n);
+
   if (x == root(n)) {
     return x;
   }
@@ -67,6 +77,8 @@ function parent(x, n) {
 }
 
 function sibling(x, n) {
+  assertInRange(x, n);
+
   const p = parent(x, n);
   if (x < p) {
     return right(p, n);
@@ -81,6 +93,8 @@ function sibling(x, n) {
 // Ordered from leaf to root
 // Includes leaf, but not root
 function dirpath(x, n) {
+  assertInRange(x, n);
+
   if (x == root(n)) {
     return [];
   }
