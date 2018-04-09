@@ -134,6 +134,9 @@ class TKEM {
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
+
+    console.log(dirpath, copath, overlap);
+
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
     let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
@@ -362,7 +365,7 @@ async function testMembers(size) {
   return members;
 }
 
-async function testTwo() {
+async function testUserAdd() {
   // Initialize a one-node tree
   // XXX(RLB): This should just become the default ctor
   let m0 = new TKEM();
@@ -386,12 +389,72 @@ async function testTwo() {
 
   let eq = await m0.equal(m1);
   if (!eq) {
-    window.m0 = m0;
-    window.m1 = m1;
     throw 'tkem-user-add';
   }
 
   console.log("[tkem-user-add] PASS")
+}
+
+async function testGroupAdd() {
+  ///// MEMBER SEND /////
+
+  // Initialize a one-node tree
+  // XXX(RLB): This should just become the default ctor
+  let m0 = new TKEM();
+  m0.size = 1;
+  let ct0 = await m0.encrypt(new Uint8Array([0]));
+  m0.merge(ct0.privateNodes);
+
+  // Simulate a UserAdd
+  let m1 = new TKEM();
+  m1.size = m0.size + 1;
+  m1.index = m1.size - 1;
+  m1.merge(m0.frontier());
+  let ct1 = await m1.encrypt(new Uint8Array([1]));
+  m1.merge(ct1.privateNodes);
+
+  // Encrypt the leaf secret to the new user
+  let initKP = await iota(new Uint8Array([2]));
+  let leafSecretIn = m1.nodes[2 * m1.index].secret;
+  let leafCT = await ECKEM.encrypt(leafSecretIn, initKP.publicKey);
+
+  ///// NEW MEMBER RECV /////
+
+  // Initialize a tree from the frontier
+  let m2 = new TKEM();
+  m2.size = m0.size + 1;
+  m2.index = m2.size - 1;
+  m2.merge(m0.frontier());
+
+  // Decrypt the leaf secret and hash up the tree
+  let leafSecret = await ECKEM.decrypt(leafCT, initKP.privateKey);
+  let dirpath = tm.dirpath(2 * m2.index, m2.size);
+  dirpath.push(tm.root(m2.size));
+
+  let h = leafSecret;
+  for (let n of dirpath) {
+    let kp = await iota(h);
+    m2.nodes[n] = {
+      secret: h,
+      private: kp.privateKey,
+      public: kp.publicKey,
+    }
+
+    h = await hash(h);
+  }
+
+  ///// MEMBER RECV /////
+  let pt2 = await m0.decrypt(ct1.index, ct1.ciphertexts);
+  m0.merge(ct1.nodes);
+  m0.merge(pt2.nodes);
+  m0.size += 1;
+
+  let eq = await m0.equal(m2);
+  if (!eq) {
+    throw 'tkem-group-add';
+  }
+
+  console.log("[tkem-group-add] PASS")
 }
 
 async function testUpdate() {
@@ -443,5 +506,6 @@ module.exports = {
   class: TKEM,
   testMembers: testMembers,
   testUpdate: testUpdate,
-  testTwo: testTwo,
+  testUserAdd: testUserAdd,
+  testGroupAdd: testGroupAdd,
 };
