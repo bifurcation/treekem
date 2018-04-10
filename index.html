@@ -4,7 +4,7 @@
 <head>
 <title>TKEM</title>
 <script src="./dist/index.js"></script>
-<script src="./web/svg.js"></script>
+<script src="./web/jquery-3.3.1.min.js"></script>
 <script>
 
 const ok = (x => { window.pout = x; console.log("ok", x); });
@@ -17,23 +17,34 @@ function hex(ab) {
 
 let members;
 
+function addMember(m) {
+  // Add a tree
+  let divID = "tree" + m.index;
+  let tag = $(`<div class="number">${m.index}</div>`);
+  let div = $(`<div id="${divID}" class="tree"></div>`);
+  div.append(tag);
+  $("#members").append(div);
+
+  // Render
+  m.renderInit(divID);
+  m.render();
+
+  // Add an update button
+  let buttonID = "update" + m.index;
+  let button = $(`<button id="buttonID">Update(${m.index})</button>`);
+  button.click(() => { update(m.index); });
+  $("#buttons").append(button);
+}
+
 async function initMembers(n) {
   members = await TKEM.testMembers(n);
-  
-  for (let i=0; i<n; ++i) {
-    let div = document.createElement("div");
-    div.id = "tree" + i;
-    document.body.appendChild(div);
-
-    members[i].renderInit(div.id);
-    members[i].render();
-  }
+  members.map(m => addMember(m));
 }
 
 async function update(k) {
-  let seed = crypto.getRandomValues(new Uint8Array(32));
-  let ct = await members[k].encrypt(seed);
-  
+  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let ct = await members[k].encrypt(leaf);
+
   for (m2 of members) {
     if (m2.index == k) {
       continue;
@@ -45,25 +56,122 @@ async function update(k) {
     m2.render();
   }
 
-  console.log("private", ct.privateNodes);
-  console.log("public", ct.nodes);
-
   members[k].merge(ct.privateNodes);
   members[k].render();
 }
 
+async function userAdd() {
+  let last = members[members.length - 1];
+  let size = last.size;
+  let frontier = last.frontier();
+  let leaf = crypto.getRandomValues(new Uint8Array(32));
+
+  let ua = await TKEM.class.userAdd(size, frontier, leaf);
+  for (let m of members) {
+    let pt = await m.decrypt(ua.index, ua.ciphertexts);
+    m.merge(ua.nodes);
+    m.merge(pt.nodes);
+    m.size = ua.size;
+    m.render();
+  }
+
+  let joiner = await TKEM.class.fromFrontier(size, frontier, leaf);
+  addMember(joiner);
+  members.push(joiner);
+}
+
+async function groupAdd() {
+  let last = members[members.length - 1];
+  let size = last.size;
+  let frontier = last.frontier();
+  let leafIn = crypto.getRandomValues(new Uint8Array(32));
+
+  let initKP = await iota(new Uint8Array([2]));
+  let ga = await last.groupAdd(leafIn, initKP.publicKey);
+
+  // Instantiate joiner
+
+  for (let m of members) {
+    let pt = await m.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
+    m.merge(ga.forGroup.nodes);
+    m.merge(pt.nodes);
+    m.size = ga.forGroup.size;
+    m.render();
+  }
+
+  let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
+  let joiner = await TKEM.class.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
+  addMember(joiner);
+  members.push(joiner);
+}
+
+$(document).ready(() => {
+  $("#userAdd").click(userAdd);
+  $("#groupAdd").click(groupAdd);
+
+  initMembers(1);
+});
+
 </script>
 <style>
-div {
+body {
+  font-family: Menlo, monospace;
+  font-size: 10pt;
+  margin: 0;
+}
+
+#buttons, #legend, #members {
+  padding: 2ex;
+  width: 100%;
+}
+
+#legend {
+  background: #ccc;
+  border-top: 1px solid #999;
+  border-bottom: 1px solid #999;
+}
+
+button {
+  border: 1px solid #999;
+  background: #ccc;
+  font-family: Menlo, monospace;
+  font-size: 10pt;
+  padding: 1ex;
+  box-shadow: 1px 1px;
+}
+
+div.number {
+  margin: 0;
+  color: #000;
+  background: #ccc;
+  text-align: center;
+}
+
+div.tree {
   float: left;
   margin: 1ex;
-  padding: 1ex;
+  padding: 0;
   border: 1px solid black;
+}
+
+div.tree svg {
+  margin: 1ex;
 }
 </style>
 </head>
 
 <body>
+  <div id="buttons">
+    <button id="userAdd">UserAdd</button>
+    <button id="groupAdd">GroupAdd</button>
+  </div>
+  <div id="legend">
+    Filled boxes are nodes with private keys.
+    Empty boxes are nodes with only public keys.
+    Colors represent hash chains.
+    Lightness represents distance along the chain.
+  </div>
+  <div id="members"></div>
 </body>
 
 </html>
