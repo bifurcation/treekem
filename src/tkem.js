@@ -3,13 +3,19 @@
 const ECKEM = require('./eckem');
 const iota = require('./iota');
 const tm = require('./tree-math');
-const cs = window.crypto.subtle;
 
+const cs = window.crypto.subtle;
 const SVG = require('svg.js');
 
 function hex(ab) {
   const arr = Array.from(new Uint8Array(ab));
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
+}
+
+function xor(a, b) {
+  const ua = new Uint8Array(a);
+  const ub = new Uint8Array(b);
+  return (new Uint8Array(ua.map((x, i) => x ^ ub[i]))).buffer;
 }
 
 async function fingerprint(pubKey) {
@@ -22,8 +28,33 @@ function hash(x) {
   return cs.digest("SHA-256", x);
 }
 
-const FADESTART = 20;
-const FADESTOP = 80;
+// #ifdef COLORIZE
+const PAD = 1;
+const RECTRAD = 5;
+const RECTSPACE = 25;
+const STROKEWIDTH = 2;
+const RECTSIZE = 2 * RECTRAD;
+
+const DEFAULTSTROKE = "#eee";
+const DEFAULTFILL = "#fff";
+
+const FADESTART = 30;
+const FADESTOP = 70;
+
+function center(n, height) {
+  const h = tm.level(n);
+  return {
+    x: n * RECTSPACE + RECTRAD + PAD,
+    y: (height - h) * RECTSPACE + RECTRAD + PAD,
+  };
+}
+
+function resize(svg, width, height) {
+  let w = (width-1) * RECTSPACE + RECTSIZE + 2 * PAD;
+  let h = height * RECTSPACE + RECTSIZE + 2 * PAD;
+  svg.size(w, h);
+}
+// #endif /* def COLORIZE */
 
 async function hashUp(index, size, h) {
   // Compute hashes up the tree
@@ -128,7 +159,7 @@ class TKEM {
   async encrypt(leaf) {
     let dirpath = tm.dirpath(2 * this.index, this.size);
     let copath = tm.copath(2 * this.index, this.size);
-    
+
     // Generate hashes up the tree
     let privateNodes = await hashUp(2 * this.index, this.size, leaf);
     let nodes = {};
@@ -155,7 +186,7 @@ class TKEM {
       nodes: nodes,
       privateNodes: privateNodes,
       ciphertexts: ciphertexts,
-    }; 
+    };
   }
 
   /*
@@ -211,7 +242,7 @@ class TKEM {
     return await tkem.encrypt(leaf);
   }
 
-  /* 
+  /*
    * Generate a GroupAdd, which has (1) a FreshKey message for current
    * members and (2) initialization information for the new member.
    */
@@ -248,7 +279,12 @@ class TKEM {
   frontier() {
     let nodes = {};
     for (let n of tm.frontier(this.size)) {
-      nodes[n] = this.nodes[n];
+      nodes[n] = {
+        public: this.nodes[n].public,
+        // #ifdef COLORIZE
+        color: this.nodes[n].color,
+        // #endif /* def COLORIZE */
+      };
     }
     return nodes;
   }
@@ -260,10 +296,6 @@ class TKEM {
    * and check for equality of the exported octets.
    */
   async equal(other) {
-    async function nodeEqual(a, b) {
-      return fingerprint(a.public) == fingerprint(b.public);
-    }
-
     let answer = (this.size == other.size);
 
     for (let n in this.nodes) {
@@ -276,7 +308,6 @@ class TKEM {
       let lfp = await fingerprint(lhs.public);
       let rfp = await fingerprint(rhs.public);
       answer = answer && (lfp == rfp);
-
     }
 
     return answer;
@@ -310,57 +341,73 @@ class TKEM {
     const root = tm.root(this.size);
     const height = tm.level(root);
     const width = tm.nodeWidth(this.size);
- 
-    const RECTRAD = 10;
-    const RECTSIZE = 2 * RECTRAD;
-    const RECTSPACE = 50;
-    const STROKEWIDTH = 3;
- 
-    function center(n) {
-      const h = tm.level(n);
-      return {
-        x: n * RECTSPACE + RECTRAD,
-        y: (height - h) * RECTSPACE + RECTRAD,
-      };
-    }
- 
+
     let index = [...Array(width).keys()];
-    let nc = index.map(k => center(k));
+    let nc = index.map(k => center(k, height));
     let pc = index.map(k => nc[tm.parent(k, this.size)]);
 
-    this.svg = SVG(id).size(width * RECTSPACE, width * RECTSPACE);
+    this.svg = SVG(id);
+    resize(this.svg, width, height);
+    this.lineGroup = this.svg.group();
+    this.rectGroup = this.svg.group();
+
     this.lines = index.map(k => {
-      return this.svg.line(nc[k].x, nc[k].y, pc[k].x, pc[k].y)
-                     .stroke({ width: STROKEWIDTH });
+      return this.lineGroup.line(nc[k].x, nc[k].y, pc[k].x, pc[k].y)
+                           .stroke({ width: STROKEWIDTH });
     });
     this.rects = index.map(k => {
-      return this.svg.rect(RECTSIZE, RECTSIZE)
-                     .cx(nc[k].x).cy(nc[k].y)
-                     .stroke({ width: STROKEWIDTH });
-
+      return this.rectGroup.rect(RECTSIZE, RECTSIZE)
+                           .cx(nc[k].x).cy(nc[k].y)
+                           .stroke({ width: STROKEWIDTH });
     });
 
     return this;
   }
 
   async render() {
-    const DEFAULTSTROKE = "hsl(0, 0%, 75%)";
-    const DEFAULTFILL = "hsl(0, 0%, 100%)";
+    const root = tm.root(this.size);
+    const height = tm.level(root);
+    const width = tm.nodeWidth(this.size);
 
+    let index = [...Array(width).keys()];
+    let nc = index.map(k => center(k, height));
+    let pc = index.map(k => nc[tm.parent(k, this.size)]);
+
+    // Add rectangles if needed
+    resize(this.svg, width, height);
+    while (this.rects.length < width) {
+      let k = this.rects.length;
+
+      let line = this.lineGroup.line(nc[k].x, nc[k].y, pc[k].x, pc[k].y)
+                               .stroke({ width: STROKEWIDTH });
+
+      let rect = this.rectGroup.rect(RECTSIZE, RECTSIZE)
+                               .cx(nc[k].x).cy(nc[k].y)
+                               .stroke({ width: STROKEWIDTH });
+
+      this.lines.push(line);
+      this.rects.push(rect);
+    }
+
+    // Move everything to the right position
+    nc.map((c, k) => {
+      this.rects[k].cx(nc[k].x).cy(nc[k].y);
+      this.lines[k].plot(nc[k].x, nc[k].y, pc[k].x, pc[k].y);
+    });
+
+    // Apply colors
     async function hue(k) {
       let data = await cs.exportKey("spki", k);
       let hue = Array.from(new Uint8Array(data)).reduce((x, y) => x ^ y);
       return `hsl(${hue}, 100%, 50%)`;
     }
 
-    let index = [...Array(this.rects.length).keys()];
-
     let stroke = await Promise.all(index.map(async k => {
       return (!this.nodes[k])? DEFAULTSTROKE
            : (this.nodes[k].color)? this.nodes[k].color
            : await hue(this.nodes[k].public);
     }));
- 
+
     let fill = index.map(k => {
       return (this.nodes[k] && this.nodes[k].private)? stroke[k] : DEFAULTFILL;
     });
@@ -380,12 +427,12 @@ function arrayBufferEqual(a, b) {
 async function testMembers(size) {
   let nodeWidth = tm.nodeWidth(size);
   let keyPairs = await Promise.all([...Array(nodeWidth).keys()].map(i => iota(new Uint8Array([i]))));
-  
+
   let nodes = {}
-  keyPairs.map((kp, i) => { 
+  keyPairs.map((kp, i) => {
     nodes[i] = {
-      private: kp.privateKey, 
-      public: kp.publicKey 
+      private: kp.privateKey,
+      public: kp.publicKey
     };
   });
 
@@ -420,7 +467,7 @@ async function testMembers(size) {
 
 async function testUserAdd() {
   const testGroupSize = 5;
-  
+
   let creator = await TKEM.oneMemberGroup(new Uint8Array([0]));
   let members = [creator];
 
@@ -428,7 +475,7 @@ async function testUserAdd() {
   let frontier = creator.frontier();
   for (let i = 1; i < testGroupSize; ++i) {
     let leaf = new Uint8Array([i]);
-    let ua = await TKEM.userAdd(size, frontier, leaf); 
+    let ua = await TKEM.userAdd(size, frontier, leaf);
 
     // Instantiate joiner
     let joiner = await TKEM.fromFrontier(size, frontier, leaf);
@@ -456,7 +503,7 @@ async function testUserAdd() {
 
 async function testGroupAdd() {
   const testGroupSize = 5;
-  
+
   let last = await TKEM.oneMemberGroup(new Uint8Array([0]));
   let members = [last];
 
@@ -464,7 +511,7 @@ async function testGroupAdd() {
     let leafIn = new Uint8Array([i]);
     let initKP = await iota(new Uint8Array([2]));
     let ga = await last.groupAdd(leafIn, initKP.publicKey);
-    
+
     // Instantiate joiner
     let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
     let joiner = await TKEM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
@@ -536,10 +583,71 @@ async function testUpdate() {
   console.log("[tkem-encrypt-decrypt] PASS");
 }
 
+async function testSimultaneousUpdate() {
+  const testGroupSize = 5;
+  const seed = new Uint8Array([0,1,2,3]);
+  let members = await testMembers(testGroupSize);
+
+  // Have each member emit an update, then have everyone compute and
+  // apply a merged update
+  let cts = await Promise.all(members.map(m => {
+    return m.encrypt(new Uint8Array([m.index]));
+  }));
+
+  let secrets = await Promise.all(members.map(async m => {
+    const pts = (await Promise.all(cts.map((ct, i) => {
+      return (i == m.index)? cts[m.index] : m.decrypt(ct.index, ct.ciphertexts);
+    })));
+
+    // The secret for the merge will be the XOR of all the
+    // individual root secrets
+    let secret = pts.map(pt => pt.root).reduce(xor);
+    
+    // The key pair changes are applied in order of arrival
+    for (let i = 0; i < pts.length; ++i) {
+      m.merge(cts[i].nodes);
+
+      if (i != m.index) {
+        m.merge(pts[i].nodes);
+      } else {
+        // Actually a ciphertext
+        m.merge(pts[i].privateNodes);
+      }
+    }
+    return secret;
+  }));
+
+  // Check that all of the derived secrets are the same
+  secrets.reduce((a, b) => {
+    if (!arrayBufferEqual(a, b)) {
+      console.log("error:", hex(a), hex(b));
+      throw 'tkem-simultaneous-secret';
+    }
+
+    return a;
+  });
+
+  // Check that all members arrived in the same state
+  for (const m1 of members) {
+    for (const m2 of members) {
+      let eq = await m1.equal(m2);
+      if (!eq) {
+        console.log("error:", m1.index, "!=", m2.index);
+        await m1.dump();
+        await m2.dump();
+        throw 'tkem-simultaneous-tree';
+      }
+    }
+  }
+   
+  console.log("[tkem-simultaneous] PASS");
+}
+
 async function test() {
   await testUpdate();
   await testUserAdd();
   await testGroupAdd();
+  await testSimultaneousUpdate();
 }
 
 module.exports = {
@@ -548,5 +656,6 @@ module.exports = {
   testUpdate: testUpdate,
   testUserAdd: testUserAdd,
   testGroupAdd: testGroupAdd,
+  testSimultaneousUpdate: testSimultaneousUpdate,
   test: test,
 };
