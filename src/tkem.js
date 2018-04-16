@@ -56,44 +56,6 @@ function resize(svg, width, height) {
 }
 // #endif /* def COLORIZE */
 
-async function hashUp(index, size, h) {
-  // Compute hashes up the tree
-  let nodes = {};
-  let n = index;
-  let root = tm.root(size);
-  let path = [n];
-  while (true) {
-    let kp = await iota(h);
-    nodes[n] = {
-      secret: h,
-      public: kp.publicKey,
-      private: kp.privateKey,
-    };
-
-    if (n == root) {
-      break;
-    }
-
-    n = tm.parent(n, size);
-    path.push(n);
-    h = await hash(h);
-  }
-
-  // Colorize the nodes
-  // #ifdef COLORIZE
-  let height = tm.level(root);
-  let hue = Array.from(new Uint8Array(nodes[root].secret)).reduce((x, y) => x ^ y);
-  let dl = Math.round((FADESTOP - FADESTART) / height);
-  for (let i = 0; i < path.length; ++i) {
-    let l = FADESTART + i * dl;
-    let color = `hsl(${hue}, 100%, ${l}%)`;
-    nodes[path[path.length - i - 1]].color = color;
-  }
-  // #endif /* def COLORIZE */
-
-  return nodes;
-}
-
 class TKEM {
   /*
    * TKEM objects should not be constructed directly.  Instead, use
@@ -115,7 +77,7 @@ class TKEM {
     let tkem = new TKEM();
     tkem.size = 1;
     tkem.index = 0;
-    tkem.merge(await hashUp(0, 1, leaf));
+    tkem.merge(await TKEM.hashUp(0, 1, leaf));
     return tkem;
   }
 
@@ -129,7 +91,7 @@ class TKEM {
     tkem.index = size;
     tkem.merge(frontier);
 
-    let nodes = await hashUp(2 * tkem.index, tkem.size, leaf);
+    let nodes = await TKEM.hashUp(2 * tkem.index, tkem.size, leaf);
     tkem.merge(nodes);
     return tkem;
   }
@@ -161,7 +123,7 @@ class TKEM {
     let copath = tm.copath(2 * this.index, this.size);
 
     // Generate hashes up the tree
-    let privateNodes = await hashUp(2 * this.index, this.size, leaf);
+    let privateNodes = await TKEM.hashUp(2 * this.index, this.size, leaf);
     let nodes = {};
     for (let n in privateNodes) {
       nodes[n] = {
@@ -223,7 +185,7 @@ class TKEM {
     // Hash up to the root (plus one if we're growing the tree)
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
     newDirpath.push(tm.root(senderSize));
-    let nodes = await hashUp(newDirpath[dirIndex+1], senderSize, h);
+    let nodes = await TKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
 
     let root = tm.root(senderSize);
     return {
@@ -236,6 +198,8 @@ class TKEM {
    * Generate a UserAdd, which is just a FreshKey message with a
    * tree size one bigger than the current tree.  The resulting
    * message can be processed by decrypt().
+   *
+   * NOT NEEDED BY TKEM-STATE
    */
   static async userAdd(size, frontier, leaf) {
     let tkem = await TKEM.fromFrontier(size, frontier, leaf);
@@ -245,6 +209,8 @@ class TKEM {
   /*
    * Generate a GroupAdd, which has (1) a FreshKey message for current
    * members and (2) initialization information for the new member.
+   *
+   * NOT NEEDED BY TKEM-STATE
    */
   async groupAdd(leaf, initPub) {
     let freshKey = await TKEM.userAdd(this.size, this.frontier(), leaf);
@@ -325,6 +291,44 @@ class TKEM {
 
       console.log("  ", n, ":", await fingerprint(this.nodes[n].public));
     }
+  }
+
+  static async hashUp(index, size, h) {
+    // Compute hashes up the tree
+    let nodes = {};
+    let n = index;
+    let root = tm.root(size);
+    let path = [n];
+    while (true) {
+      let kp = await iota(h);
+      nodes[n] = {
+        secret: h,
+        public: kp.publicKey,
+        private: kp.privateKey,
+      };
+  
+      if (n == root) {
+        break;
+      }
+  
+      n = tm.parent(n, size);
+      path.push(n);
+      h = await hash(h);
+    }
+  
+    // Colorize the nodes
+    // #ifdef COLORIZE
+    let height = tm.level(root);
+    let hue = Array.from(new Uint8Array(nodes[root].secret)).reduce((x, y) => x ^ y);
+    let dl = Math.round((FADESTOP - FADESTART) / height);
+    for (let i = 0; i < path.length; ++i) {
+      let l = FADESTART + i * dl;
+      let color = `hsl(${hue}, 100%, ${l}%)`;
+      nodes[path[path.length - i - 1]].color = color;
+    }
+    // #endif /* def COLORIZE */
+  
+    return nodes;
   }
 
   // #ifdef COLORIZE

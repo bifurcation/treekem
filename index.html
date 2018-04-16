@@ -68,10 +68,10 @@ async function userAdd() {
 
   let ua = await TKEM.class.userAdd(size, frontier, leaf);
   for (let m of members) {
-    let pt = await m.decrypt(ua.index, ua.ciphertexts);
+    let pt = await m.decrypt(size, ua.ciphertexts);
     m.merge(ua.nodes);
     m.merge(pt.nodes);
-    m.size = ua.size;
+    m.size = size + 1;
     m.render();
   }
 
