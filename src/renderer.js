@@ -12,9 +12,6 @@ const RECTSIZE = 2 * RECTRAD;
 const DEFAULTSTROKE = "#eee";
 const DEFAULTFILL = "#fff";
 
-const FADESTART = 30;
-const FADESTOP = 70;
-
 function center(n, height) {
   const h = tm.level(n);
   return {

@@ -4,3 +4,5 @@ window.tm = require('./tree-math');
 window.TKEM = require('./tkem');
 window.TKEMState = require('./tkem-state').class;
 window.Renderer = require('./renderer');
+
+window.TKEMStateTest = require('./tkem-state').test;

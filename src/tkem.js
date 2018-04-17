@@ -172,37 +172,6 @@ class TKEM {
   }
 
   /*
-   * Generate a UserAdd, which is just a FreshKey message with a
-   * tree size one bigger than the current tree.  The resulting
-   * message can be processed by decrypt().
-   *
-   * NOT NEEDED BY TKEM-STATE
-   */
-  static async userAdd(size, frontier, leaf) {
-    let tkem = await TKEM.fromFrontier(size, frontier, leaf);
-    return await tkem.encrypt(leaf);
-  }
-
-  /*
-   * Generate a GroupAdd, which has (1) a FreshKey message for current
-   * members and (2) initialization information for the new member.
-   *
-   * NOT NEEDED BY TKEM-STATE
-   */
-  async groupAdd(leaf, initPub) {
-    let freshKey = await TKEM.userAdd(this.size, this.frontier(), leaf);
-    let encryptedLeaf = await ECKEM.encrypt(leaf, initPub);
-    return {
-      forGroup: freshKey,
-      forJoiner: {
-        size: this.size,
-        frontier: this.frontier(),
-        encryptedLeaf: encryptedLeaf,
-      },
-    }
-  }
-
-  /*
    * Updates nodes in the tree.
    *
    * Arguments:
@@ -356,78 +325,7 @@ async function testMembers(size) {
   return members;
 }
 
-async function testUserAdd() {
-  const testGroupSize = 5;
-
-  let creator = await TKEM.oneMemberGroup(new Uint8Array([0]));
-  let members = [creator];
-
-  let size = creator.size;
-  let frontier = creator.frontier();
-  for (let i = 1; i < testGroupSize; ++i) {
-    let leaf = new Uint8Array([i]);
-    let ua = await TKEM.userAdd(size, frontier, leaf);
-
-    // Instantiate joiner
-    let joiner = await TKEM.fromFrontier(size, frontier, leaf);
-
-    // Update other members
-    for (let m of members) {
-      let pt = await m.decrypt(ua.index, ua.ciphertexts);
-      m.merge(ua.nodes);
-      m.merge(pt.nodes);
-      m.size = ua.size;
-
-      let eq = await joiner.equal(m);
-      if (!eq) {
-        throw 'tkem-eq';
-      }
-    }
-
-    members.push(joiner);
-    size = joiner.size;
-    frontier = joiner.frontier();
-  }
-
-  console.log("[tkem-user-add] PASS")
-}
-
-async function testGroupAdd() {
-  const testGroupSize = 5;
-
-  let last = await TKEM.oneMemberGroup(new Uint8Array([0]));
-  let members = [last];
-
-  for (let i = 1; i < testGroupSize; ++i) {
-    let leafIn = new Uint8Array([i]);
-    let initKP = await iota(new Uint8Array([2]));
-    let ga = await last.groupAdd(leafIn, initKP.publicKey);
-
-    // Instantiate joiner
-    let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
-    let joiner = await TKEM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
-
-    // Update other members
-    for (let m of members) {
-      let pt = await m.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
-      m.merge(ga.forGroup.nodes);
-      m.merge(pt.nodes);
-      m.size = ga.forGroup.size;
-
-      let eq = await joiner.equal(m);
-      if (!eq) {
-        throw 'tkem-eq';
-      }
-    }
-
-    members.push(joiner);
-    last = joiner;
-  }
-
-  console.log("[tkem-group-add] PASS")
-}
-
-async function testUpdate() {
+async function testEncryptDecrypt() {
   const testGroupSize = 5;
 
   // Values you should see on inspection:
@@ -535,18 +433,11 @@ async function testSimultaneousUpdate() {
 }
 
 async function test() {
-  await testUpdate();
-  await testUserAdd();
-  await testGroupAdd();
+  await testEncryptDecrypt();
   await testSimultaneousUpdate();
 }
 
 module.exports = {
   class: TKEM,
-  testMembers: testMembers,
-  testUpdate: testUpdate,
-  testUserAdd: testUserAdd,
-  testGroupAdd: testGroupAdd,
-  testSimultaneousUpdate: testSimultaneousUpdate,
   test: test,
 };

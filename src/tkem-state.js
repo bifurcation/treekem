@@ -48,19 +48,14 @@ class TKEMState {
   }
 
   async add(userInitPub) {
-    let size = this.tkem.size;
-    let frontier = this.tkem.frontier();
     let leaf = window.crypto.getRandomValues(new Uint8Array(32));
-    let ua = await TKEM.userAdd(size, frontier, leaf);
     let encryptedLeaf = await ECKEM.encrypt(leaf, userInitPub);
+    let ua = await TKEMState.join(leaf, this.groupInitKey);
     return {
-      forGroup: {
-        ciphertexts: ua.ciphertexts,
-        nodes: ua.nodes,
-      },
+      forGroup: ua,
       forJoiner: {
-        size: size,
-        frontier: frontier,
+        size: this.tkem.size,
+        frontier: this.tkem.frontier(),
         encryptedLeaf: encryptedLeaf,
       },
     };
@@ -112,6 +107,109 @@ class TKEMState {
   handleRemove(remove) {/* TODO */}
 }
 
+async function testUserAdd() {
+  const testGroupSize = 5;
+
+  let creator = await TKEMState.oneMemberGroup(new Uint8Array([0]));
+  let members = [creator];
+
+  for (let i = 1; i < testGroupSize; ++i) {
+    let leaf = window.crypto.getRandomValues(new Uint8Array(32));
+    let gik = members[members.length - 1].groupInitKey;
+    let ua = await TKEMState.join(leaf, gik);
+
+    let joiner = await TKEMState.fromUserAdd(leaf, ua, gik);
+    
+    for (let m of members) {
+      await m.handleUserAdd(ua);
+
+      let eq = await joiner.tkem.equal(m.tkem);
+      if (!eq) {
+        throw 'tkem-user-add';
+      }
+    }
+
+    members.push(joiner);
+  }
+
+  console.log("[tkem-user-add] PASS");
+}
+
+async function testGroupAdd() {
+  const testGroupSize = 5;
+
+  let creator = await TKEMState.oneMemberGroup(new Uint8Array([0]));
+  let members = [creator];
+
+  for (let i = 1; i < testGroupSize; ++i) {
+    let initKP = await iota(window.crypto.getRandomValues(new Uint8Array(4)))
+    let ga = await members[members.length - 1].add(initKP.publicKey)
+
+    let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
+
+    for (let m of members) {
+      await m.handleGroupAdd(ga);
+
+      let eq = await joiner.tkem.equal(m.tkem);
+      if (!eq) {
+        throw 'tkem-group-add';
+      }
+    }
+
+    members.push(joiner);
+  }
+
+  console.log("[tkem-group-add] PASS");
+}
+
+async function testUpdate() {
+  // Create a group via GroupAdds
+  const testGroupSize = 5;
+  let creator = await TKEMState.oneMemberGroup(new Uint8Array([0]));
+  let members = [creator];
+  for (let i = 1; i < testGroupSize; ++i) {
+    let initKP = await iota(window.crypto.getRandomValues(new Uint8Array(4)))
+    let ga = await members[members.length - 1].add(initKP.publicKey)
+
+    for (let m of members) {
+      await m.handleGroupAdd(ga);
+    }
+
+    let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
+    members.push(joiner);
+  }
+
+  // Have each member update and verify that others are consistent
+  for (let m1 of members) {
+    let leaf = crypto.getRandomValues(new Uint8Array(32));
+    let update = await m1.update(leaf);
+
+    await m1.handleSelfUpdate(update, leaf);
+
+    for (let m2 of members) {
+      if (m2.index == m1.index) {
+        continue
+      }
+        
+      await m2.handleUpdate(update);
+
+      let eq = await m1.tkem.equal(m2.tkem);
+      if (!eq) {
+        throw 'tkem-update';
+      }
+    }
+  }
+  
+  console.log("[tkem-update] PASS");
+}
+
+async function test() {
+  await testUserAdd();
+  await testGroupAdd();
+  await testUpdate();
+}
+
 module.exports = {
   class: TKEMState,
+  test: test,
 };

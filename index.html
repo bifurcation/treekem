@@ -41,26 +41,10 @@ function addMember(m) {
   $("#buttons").append(button);
 }
 
-async function update(k) {
-  let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let update = await members[k].update(leaf);
-  
-  for (m2 of members) {
-    if (m2.tkem.index == k) {
-      await m2.handleSelfUpdate(update, leaf);
-    } else {
-      await m2.handleUpdate(update);
-    }
-    renderers[m2.index].render(m2.size, m2.nodes);
-  }
-}
-
 async function userAdd() {
   let last = members[members.length - 1];
-  let gik = last.groupInitKey;
-  
   let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let ua = await TKEMState.join(leaf, gik);
+  let ua = await TKEMState.join(leaf, last.groupInitKey);
 
   for (let m of members) {
     await m.handleUserAdd(ua);
@@ -84,6 +68,20 @@ async function groupAdd() {
 
   let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
   addMember(joiner);
+}
+
+async function update(k) {
+  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let update = await members[k].update(leaf);
+  
+  for (m2 of members) {
+    if (m2.tkem.index == k) {
+      await m2.handleSelfUpdate(update, leaf);
+    } else {
+      await m2.handleUpdate(update);
+    }
+    renderers[m2.index].render(m2.size, m2.nodes);
+  }
 }
 
 $(document).ready(async () => {
