@@ -1,20 +1,7 @@
 'use strict';
 
 const cs = window.crypto.subtle;
-  
-const ECDH_KEY_USAGES = ["deriveKey"];
-const AES_GCM_KEY_USAGES = ["encrypt", "decrypt"];
-
-const ECDH_GEN = { name: "ECDH", namedCurve: "P-256" };
-const AES_GCM_GEN = { name: "AES-GCM", length: 128 };
-
-function ECDH_DERIVE(pub) {
-  return { 
-    name: "ECDH", 
-    namedCurve: "P-256", 
-    public: pub,
-  };
-}
+const DH = require('./dh');
 
 function AES_GCM_ENC(iv) {
   return { 
@@ -36,17 +23,17 @@ function AES_GCM_ENC(iv) {
  *   }
  */
 async function encrypt(plaintext, pubA) {
-  const kpE = await cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES);
+  const kpE = await DH.newKeyPair();
+  const ekData = await DH.secret(kpE.privateKey, pubA);
+  const ek = await cs.importKey("raw", ekData, "AES-GCM", false, ['encrypt']);
 
-  const dhAlg = ECDH_DERIVE(pubA);
-  const ek = await cs.deriveKey(dhAlg, kpE.privateKey, AES_GCM_GEN, false, AES_GCM_KEY_USAGES);
-  
-  const aesAlg = AES_GCM_ENC();
-  const ct = await cs.encrypt(aesAlg, ek, plaintext);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12))
+  const alg = { name: "AES-GCM", iv: iv };
+  const ct = await cs.encrypt(alg, ek, plaintext);
 
   return {
     pub: kpE.publicKey,
-    iv: aesAlg.iv,
+    iv: iv,
     ct: ct,
   };
 }
@@ -59,26 +46,23 @@ async function encrypt(plaintext, pubA) {
  * Returns: Promise<ArrayBuffer>
  */
 async function decrypt(ciphertext, priv) {
-  const dhAlg = ECDH_DERIVE(ciphertext.pub);
-  const ek = await cs.deriveKey(dhAlg, priv, AES_GCM_GEN, false, AES_GCM_KEY_USAGES);
+  const ekData = await DH.secret(priv, ciphertext.pub);
+  const ek = await cs.importKey("raw", ekData, "AES-GCM", false, ['decrypt']);
 
-  const aesAlg = AES_GCM_ENC(ciphertext.iv);
-  return cs.decrypt(aesAlg, ek, ciphertext.ct);
+  const alg = { name: "AES-GCM", iv: ciphertext.iv };
+  return cs.decrypt(alg, ek, ciphertext.ct);
 }
 
 /*
  * Self-test: Encrypt/decrypt round trip
  */
 async function test() {
-  let keyPair;
   const original = new Uint8Array([0,1,2,3]);
-
-  const kp = await cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES);
+  const kp = await DH.newKeyPair();
 
   try {
     const encrypted = await encrypt(original, kp.publicKey);
     const decrypted = await decrypt(encrypted, kp.privateKey);
-    
     const equal = (Array.from(decrypted).filter((x,i) => (original[i] != x)).length == 0)
     console.log("[ECKEM]", equal? "PASS" : "FAIL");
   } catch (err) {
