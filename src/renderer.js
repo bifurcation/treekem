@@ -2,6 +2,7 @@
 
 const tm = require('./tree-math');
 const SVG = require('svg.js');
+const cs = window.crypto.subtle;
 
 const PAD = 1;
 const RECTRAD = 5;
@@ -49,7 +50,8 @@ class Renderer {
 
     let index = [...Array(width).keys()];
     let nc = index.map(k => center(k, height));
-    let pc = index.map(k => nc[tm.parent(k, size)]);
+    let np = index.map(k => tm.parent(k, size))
+    let pc = index.map(k => nc[np[k]]);
 
     // Add rectangles if needed
     resize(this.svg, width, height);
@@ -81,10 +83,11 @@ class Renderer {
     }));
 
     let fill = index.map(k => {
+      let rectStroke = (!nodes[np[k]])? DEFAULTSTROKE : stroke[k];
       return (nodes[k] && nodes[k].private)? stroke[k] : DEFAULTFILL;
     });
 
-    this.lines.map((line, k) => { line.stroke(stroke[k]); });
+    this.lines.map((line, k) => { line.stroke((!nodes[np[k]])? DEFAULTSTROKE : stroke[k]); });
     this.rects.map((rect, k) => { rect.fill(fill[k]).stroke(stroke[k]); });
   }
 }

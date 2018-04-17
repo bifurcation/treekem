@@ -15,9 +15,34 @@ function hex(ab) {
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
 }
 
-let StateType = TKEMState;
+let stateTypes = {
+  "TKEM": TKEMState,
+  "Flat": FlatState,
+};
+
+let StateType = FlatState;
 let members = [];
 let renderers = [];
+
+async function init() {
+  $("div.tree").remove();
+  $("button.update").remove();
+  members = [];
+  renderers = [];
+
+  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let creator = await StateType.oneMemberGroup(leaf);
+  addMember(creator);
+}
+
+function selectStateType(label) {
+  let id = "stateType-" + label;
+  $("button.stateType").removeClass("selectedState");
+  $("#" + id).addClass("selectedState");
+
+  StateType = stateTypes[label];
+  return init();
+}
 
 function lockWrap(action) {
   return () => {
@@ -47,7 +72,7 @@ function addMember(m) {
 
   // Add an update button
   let buttonID = "update" + index;
-  let button = $(`<button id="buttonID">Update(${index})</button>`);
+  let button = $(`<button class="update">Update(${index})</button>`);
   button.click(lockWrap(() => { return update(index); }));
   $("#buttons").append(button);
 }
@@ -88,7 +113,7 @@ async function update(k) {
   let update = await members[k].update(leaf);
   
   for (m2 of members) {
-    if (m2.tkem.index == k) {
+    if (m2.index == k) {
       await m2.handleSelfUpdate(update, leaf);
     } else {
       await m2.handleUpdate(update);
@@ -98,12 +123,17 @@ async function update(k) {
 }
 
 $(document).ready(async () => {
+  for (let label in stateTypes) {
+    let id = "stateType-" + label;
+    let button = $(`<button id="${id}" class="stateType">${label}</button>`);
+    button.click(lockWrap(() => { return selectStateType(label); }));
+    $("#stateTypes").append(button);
+  }
+
   $("#userAdd").click(lockWrap(userAdd));
   $("#groupAdd").click(lockWrap(groupAdd));
-
-  let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let creator = await StateType.oneMemberGroup(leaf);
-  addMember(creator);
+  
+  selectStateType("TKEM");
 });
 
 </script>
@@ -114,15 +144,17 @@ body {
   margin: 0;
 }
 
-#buttons, #legend, #members {
+#stateTypes, #buttons, #legend, #members {
   padding: 2ex;
   width: 100%;
 }
 
+#stateTypes, #buttons, #legend {
+  border-bottom: 1px solid #999;
+}
+
 #legend {
   background: #ccc;
-  border-top: 1px solid #999;
-  border-bottom: 1px solid #999;
 }
 
 button {
@@ -132,6 +164,10 @@ button {
   font-size: 10pt;
   padding: 1ex;
   box-shadow: 1px 1px;
+}
+
+button.selectedState {
+  background: #99c;
 }
 
 div.number {
@@ -155,6 +191,7 @@ div.tree svg {
 </head>
 
 <body>
+  <div id="stateTypes"></div>
   <div id="buttons">
     <button id="userAdd">UserAdd</button>
     <button id="groupAdd">GroupAdd</button>
