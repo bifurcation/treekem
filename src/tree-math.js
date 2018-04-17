@@ -24,6 +24,13 @@ function nodeWidth(n) {
   return 2 * (n - 1) + 1;
 }
 
+function assert(test) {
+  if (!test) {
+    console.trace();
+    throw "assertion failure";
+  }
+}
+
 function assertInRange(x, n) {
   if (x > nodeWidth(n)) {
     throw `node index out of range (${x} > ${n})`;
@@ -116,6 +123,8 @@ function copath(x, n) {
 
 // Ordered from left to right
 function frontier(n) {
+  assert(n > 0);
+
   let last = 2*(n-1);
   let f = copath(last, n).reverse();
 

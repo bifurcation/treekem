@@ -2,48 +2,18 @@
 
 const DH = require('./dh');
 const iota = require('./iota');
+const util = require('./util');
 const cs = window.crypto.subtle;
 
 class FlatState {
   constructor() {
     this.index = 0;
     this.size = 1;
-    this.nodes = {};
+    this.nodes = [];
   }
 
-  async equal(other) {
-    let answer = (this.size == other.size);
-
-    for (let n in this.nodes) {
-      let lfp = await DH.fingerprint(this.nodes[n].public);
-      let rfp = await DH.fingerprint(other.nodes[n].public);
-      answer = answer && (lfp == rfp);
-    }
-
-    return answer;
-  }
-
-  async dump(label) {
-    console.log("=====", label, "=====");
-    console.log("size:", this.size);
-    console.log("index:", this.index);
-    console.log("nodes:");
-    for (let n in this.nodes) {
-      if (!this.nodes[n]) {
-        continue;
-      }
-
-      console.log("  ", n, ":", await DH.fingerprint(this.nodes[n].public));
-    }
-  }  
-  
   async _setOwnNode(leaf) {
-    let kp = await iota(leaf);
-    this.nodes[2 * this.index] = {
-      secret: leaf,
-      private: kp.privateKey,
-      public: kp.publicKey,
-    };
+    this.nodes[2 * this.index] = await util.newNode(leaf)
   }
 
   static async oneMemberGroup(leaf) {
@@ -95,7 +65,7 @@ class FlatState {
   get groupInitKey() {
     let publicNodes = {};
     for (let n in this.nodes) {
-      publicNodes[n] = { public: this.nodes[n].public };
+      publicNodes[n] = util.publicNode(this.nodes[n]);
     }
 
     return {

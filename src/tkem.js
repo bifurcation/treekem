@@ -3,6 +3,7 @@
 const ECKEM = require('./eckem');
 const iota = require('./iota');
 const tm = require('./tree-math');
+const util = require('./util');
 const cs = window.crypto.subtle;
 
 // #ifdef COLORIZE
@@ -95,12 +96,7 @@ class TKEM {
     let privateNodes = await TKEM.hashUp(2 * this.index, this.size, leaf);
     let nodes = {};
     for (let n in privateNodes) {
-      nodes[n] = {
-        public: privateNodes[n].public,
-        // #ifdef COLORIZE
-        color: privateNodes[n].color,
-        // #endif /* def COLORIZE */
-      }
+      nodes[n] = util.publicNode(privateNodes[n]);
     }
 
     // KEM each hash to the corresponding copath node
@@ -176,54 +172,7 @@ class TKEM {
    * Returns the nodes on the frontier of the tree { Int: Node }
    */
   frontier() {
-    let nodes = {};
-    for (let n of tm.frontier(this.size)) {
-      nodes[n] = {
-        public: this.nodes[n].public,
-        // #ifdef COLORIZE
-        color: this.nodes[n].color,
-        // #endif /* def COLORIZE */
-      };
-    }
-    return nodes;
-  }
-
-  /*
-   * Trees are equal if they have the same shape and they agree in
-   * the nodes where they overlap.  Since there's no direct way to
-   * test equality of CryptoKey objects, we export the public key
-   * and check for equality of the exported octets.
-   */
-  async equal(other) {
-    let answer = (this.size == other.size);
-
-    for (let n in this.nodes) {
-      let lhs = this.nodes[n];
-      let rhs = other.nodes[n];
-      if (!lhs || !rhs) {
-        continue;
-      }
-
-      let lfp = await DH.fingerprint(lhs.public);
-      let rfp = await DH.fingerprint(rhs.public);
-      answer = answer && (lfp == rfp);
-    }
-
-    return answer;
-  }
-
-  async dump(label) {
-    console.log("=====", label, "=====");
-    console.log("size:", this.size);
-    console.log("index:", this.index);
-    console.log("nodes:");
-    for (let n in this.nodes) {
-      if (!this.nodes[n]) {
-        continue;
-      }
-
-      console.log("  ", n, ":", await DH.fingerprint(this.nodes[n].public));
-    }
+    return util.nodePath(this.nodes, tm.frontier(this.size));
   }
 
   static async hashUp(index, size, h) {

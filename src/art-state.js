@@ -20,14 +20,6 @@ class ARTState {
     return this.art.nodes;
   }
 
-  async equal(other) {
-    return this.art.equal(other.art);
-  }
-
-  async dump(label) {
-    return this.art.dump(label);
-  }
-
   static async oneMemberGroup(leaf) {
     let state = ARTState();
     state.art = ART.oneMemberGroup(leaf);
@@ -89,23 +81,20 @@ class ARTState {
 
   async handleUserAdd(ua) {
     this.art.size += 1;
-    this.art.merge(ua.path);
-    this.art.build(ua.path);
+    await this.art.merge(ua.path);
   }
 
   async handleGroupAdd(ga) {
     this.art.size += 1;
-    this.art.merge(ga.forGroup.path);
-    this.art.build(ga.forGroup.path);
+    await this.art.merge(ga.forGroup.path);
   }
 
   async handleSelfUpdate(/* IGNORED */ update, leaf) {
-    this.art.setOwnLeaf(leaf);
+    await this.art.setOwnLeaf(leaf);
   }
 
   async handleUpdate(update) {
-    this.art.merge(update.path);
-    this.art.build(update.path);
+    await this.art.merge(update.path);
   }
   
   handleRemove(remove) {/* TODO */}
