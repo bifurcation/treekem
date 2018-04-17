@@ -15,6 +15,7 @@ function hex(ab) {
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
 }
 
+let StateType = TKEMState;
 let members = [];
 let renderers = [];
 
@@ -55,21 +56,22 @@ async function userAdd() {
   let last = members[members.length - 1];
   let leaf = crypto.getRandomValues(new Uint8Array(32));
   let gik = last.groupInitKey
-  let ua = await TKEMState.join(leaf, gik);
+  let ua = await StateType.join(leaf, gik);
 
   for (let m of members) {
     await m.handleUserAdd(ua);
     renderers[m.index].render(m.size, m.nodes);
   }
 
-  let joiner = await TKEMState.fromUserAdd(leaf, ua, gik);
+  let joiner = await StateType.fromUserAdd(leaf, ua, gik);
   addMember(joiner);
 }
 
 async function groupAdd() {
   let last = members[members.length - 1];
-  
-  let initKP = await iota(crypto.getRandomValues(new Uint8Array(4)));
+ 
+  let initLeaf = crypto.getRandomValues(new Uint8Array(4));
+  let initKP = await iota(initLeaf);
   let ga = await last.add(initKP.publicKey);
  
   for (let m of members) {
@@ -77,7 +79,7 @@ async function groupAdd() {
     renderers[m.index].render(m.size, m.nodes);
   }
 
-  let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
+  let joiner = await StateType.fromGroupAdd(initLeaf, ga);
   addMember(joiner);
 }
 
@@ -100,7 +102,7 @@ $(document).ready(async () => {
   $("#groupAdd").click(lockWrap(groupAdd));
 
   let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let creator = await TKEMState.oneMemberGroup(leaf);
+  let creator = await StateType.oneMemberGroup(leaf);
   addMember(creator);
 });
 

@@ -3,9 +3,7 @@
 const ECKEM = require('./eckem');
 const iota = require('./iota');
 const tm = require('./tree-math');
-
 const cs = window.crypto.subtle;
-const SVG = require('svg.js');
 
 // #ifdef COLORIZE
 const FADESTART = 30;

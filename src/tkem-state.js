@@ -22,6 +22,10 @@ class TKEMState {
   async equal(other) {
     return this.tkem.equal(other.tkem);
   }
+
+  async dump() {
+    return this.tkem.dump();
+  }
   
   static async oneMemberGroup(leaf) {
     let state = new TKEMState();
@@ -29,8 +33,9 @@ class TKEMState {
     return state;
   }
 
-  static async fromGroupAdd(initPriv, groupAdd) {
-    let leaf = await ECKEM.decrypt(groupAdd.forJoiner.encryptedLeaf, initPriv);
+  static async fromGroupAdd(initLeaf, groupAdd) {
+    let kp = await iota(initLeaf);
+    let leaf = await ECKEM.decrypt(groupAdd.forJoiner.encryptedLeaf, kp.privateKey);
     let state = new TKEMState();
     state.tkem = await TKEM.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
     return state;

@@ -20,6 +20,8 @@ async function testUserAdd(State) {
 
       let eq = await joiner.equal(m);
       if (!eq) {
+        await joiner.dump(joiner.index);
+        await m.dump(m.index);
         throw 'state-user-add';
       }
     }
@@ -37,16 +39,19 @@ async function testGroupAdd(State) {
   let members = [creator];
 
   for (let i = 1; i < testGroupSize; ++i) {
-    let initKP = await iota(window.crypto.getRandomValues(new Uint8Array(4)))
+    let initLeaf = window.crypto.getRandomValues(new Uint8Array(4));
+    let initKP = await iota(initLeaf)
     let ga = await members[members.length - 1].add(initKP.publicKey)
 
-    let joiner = await State.fromGroupAdd(initKP.privateKey, ga);
+    let joiner = await State.fromGroupAdd(initLeaf, ga);
 
     for (let m of members) {
       await m.handleGroupAdd(ga);
 
       let eq = await joiner.equal(m);
       if (!eq) {
+        await joiner.dump(joiner.index);
+        await m.dump(m.index);
         throw 'state-group-add';
       }
     }
@@ -54,7 +59,7 @@ async function testGroupAdd(State) {
     members.push(joiner);
   }
 
-  console.log("state-group-add] PASS");
+  console.log("[state-group-add] PASS");
 }
 
 async function testUpdate(State) {
@@ -63,14 +68,15 @@ async function testUpdate(State) {
   let creator = await State.oneMemberGroup(new Uint8Array([0]));
   let members = [creator];
   for (let i = 1; i < testGroupSize; ++i) {
-    let initKP = await iota(window.crypto.getRandomValues(new Uint8Array(4)))
+    let initLeaf = window.crypto.getRandomValues(new Uint8Array(4));
+    let initKP = await iota(initLeaf);
     let ga = await members[members.length - 1].add(initKP.publicKey)
 
     for (let m of members) {
       await m.handleGroupAdd(ga);
     }
 
-    let joiner = await State.fromGroupAdd(initKP.privateKey, ga);
+    let joiner = await State.fromGroupAdd(initLeaf, ga);
     members.push(joiner);
   }
 
@@ -90,6 +96,8 @@ async function testUpdate(State) {
 
       let eq = await m1.equal(m2);
       if (!eq) {
+        await m1.dump(m1.index);
+        await m2.dump(m2.index);
         throw 'state-update';
       }
     }
