@@ -117,11 +117,7 @@ class TKEM {
     }));
 
     return {
-      root: privateNodes[tm.root(this.size)].secret,
-      index: this.index,
-      size: this.size,
       nodes: nodes,
-      privateNodes: privateNodes,
       ciphertexts: ciphertexts,
     };
   }
@@ -164,7 +160,6 @@ class TKEM {
 
     let root = tm.root(senderSize);
     return {
-      root: nodes[root].secret,
       nodes: nodes,
     }
   }

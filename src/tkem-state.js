@@ -59,10 +59,10 @@ class TKEMState {
   async add(userInitPub) {
     let leaf = window.crypto.getRandomValues(new Uint8Array(32));
     let encryptedLeaf = await ECKEM.encrypt(leaf, userInitPub);
-
+    
     let gik = this.groupInitKey;
     let ua = await TKEMState.join(leaf, gik);
-    
+
     return {
       forGroup: ua,
       forJoiner: {
