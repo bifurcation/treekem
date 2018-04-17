@@ -36,6 +36,20 @@ async function secret(priv, pub) {
 }
 
 /*
+ * Arguments:
+ *   pub: CryptoKey representing a DH public key
+ *
+ * Returns: Promise resolving to a string with the hex SHA-256 hash
+ * of the SPKI representation of the public key.
+ */
+async function fingerprint(pub) {
+  const spki = await cs.exportKey("spki", pub);
+  const digest = await cs.digest("SHA-256", spki);
+  const arr = Array.from(new Uint8Array(digest))
+  return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
+}
+
+/*
  * Self-test: DH exchange
  */
 async function test() {
@@ -56,5 +70,6 @@ async function test() {
 module.exports = {
   newKeyPair: newKeyPair,
   secret: secret,
+  fingerprint: fingerprint,
   test: test,
 }

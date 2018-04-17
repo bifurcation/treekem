@@ -5,13 +5,28 @@ const iota = require('./iota');
 
 class ARTState {
   constructor() {
+    this.art = null;
+  }
+
+  get index() {
+    return this.art.index;
+  }
+
+  get size() {
+    return this.art.size;
+  }
+
+  get nodes() {
+    return this.art.nodes;
   }
 
   async equal(other) {
+    return this.art.equal(other.art);
   }
 
   async dump(label) {
-  }  
+    return this.art.dump(label);
+  }
 
   static async oneMemberGroup(leaf) {
     let state = ARTState();
@@ -35,8 +50,7 @@ class ARTState {
   }
 
   static async join(leaf, groupInitKey) {
-    let art = ART.fromFrontier(groupInitKey.size, groupInitKey.frontier);
-    art.add(leaf);
+    let art = ART.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     return {
       path: art.dirpath(art.size - 1),
     }

@@ -1,14 +1,8 @@
 'use strict';
 
+const DH = require('./dh');
 const iota = require('./iota');
 const cs = window.crypto.subtle;
-
-// XXX(rlb@ipv.sx): Copied from tkem.js
-async function fingerprint(pubKey) {
-  const spki = await cs.exportKey("spki", pubKey);
-  const digest = await cs.digest("SHA-256", spki);
-  return hex(digest);
-}
 
 class FlatState {
   constructor() {
@@ -19,13 +13,11 @@ class FlatState {
 
   async equal(other) {
     let answer = (this.size == other.size);
-    console.log("size", answer);
 
     for (let n in this.nodes) {
-      let lfp = await fingerprint(this.nodes[n].public);
-      let rfp = await fingerprint(other.nodes[n].public);
+      let lfp = await DH.fingerprint(this.nodes[n].public);
+      let rfp = await DH.fingerprint(other.nodes[n].public);
       answer = answer && (lfp == rfp);
-      console.log("node", n, lfp == rfp);
     }
 
     return answer;
@@ -41,7 +33,7 @@ class FlatState {
         continue;
       }
 
-      console.log("  ", n, ":", await fingerprint(this.nodes[n].public));
+      console.log("  ", n, ":", await DH.fingerprint(this.nodes[n].public));
     }
   }  
   

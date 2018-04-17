@@ -21,12 +21,6 @@ function xor(a, b) {
   return (new Uint8Array(ua.map((x, i) => x ^ ub[i]))).buffer;
 }
 
-async function fingerprint(pubKey) {
-  const spki = await cs.exportKey("spki", pubKey);
-  const digest = await cs.digest("SHA-256", spki);
-  return hex(digest);
-}
-
 function hash(x) {
   return cs.digest("SHA-256", x);
 }
@@ -210,8 +204,8 @@ class TKEM {
         continue;
       }
 
-      let lfp = await fingerprint(lhs.public);
-      let rfp = await fingerprint(rhs.public);
+      let lfp = await DH.fingerprint(lhs.public);
+      let rfp = await DH.fingerprint(rhs.public);
       answer = answer && (lfp == rfp);
     }
 
@@ -228,7 +222,7 @@ class TKEM {
         continue;
       }
 
-      console.log("  ", n, ":", await fingerprint(this.nodes[n].public));
+      console.log("  ", n, ":", await DH.fingerprint(this.nodes[n].public));
     }
   }
 
