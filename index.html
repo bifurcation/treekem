@@ -15,11 +15,14 @@ function hex(ab) {
   return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
 }
 
-let members;
+let members = [];
+let renderers = [];
 
 function addMember(m) {
+  members.push(m);
+
   // Add a tree
-  let index = m.tkem.index;
+  let index = m.index;
   let divID = "tree" + index;
   let tag = $(`<div class="number">${index}</div>`);
   let div = $(`<div id="${divID}" class="tree"></div>`);
@@ -27,8 +30,9 @@ function addMember(m) {
   $("#members").append(div);
 
   // Render
-  m.renderInit(divID);
-  m.render();
+  let r = new Renderer(divID);
+  r.render(m.size, m.nodes);
+  renderers.push(r);
 
   // Add an update button
   let buttonID = "update" + index;
@@ -44,12 +48,10 @@ async function update(k) {
   for (m2 of members) {
     if (m2.tkem.index == k) {
       await m2.handleSelfUpdate(update, leaf);
-      m2.render();
-      continue;
     } else {
       await m2.handleUpdate(update);
-      m2.render();
     }
+    renderers[m2.index].render(m2.size, m2.nodes);
   }
 }
 
@@ -62,12 +64,11 @@ async function userAdd() {
 
   for (let m of members) {
     await m.handleUserAdd(ua);
-    m.render();
+    renderers[m.index].render(m.size, m.nodes);
   }
 
   let joiner = await TKEMState.fromUserAdd(leaf, ua, gik);
   addMember(joiner);
-  members.push(joiner);
 }
 
 async function groupAdd() {
@@ -75,15 +76,14 @@ async function groupAdd() {
   
   let initKP = await iota(crypto.getRandomValues(new Uint8Array(4)));
   let ga = await last.add(initKP.publicKey);
-  
+ 
   for (let m of members) {
     await m.handleGroupAdd(ga);
-    m.render();
+    renderers[m.index].render(m.size, m.nodes);
   }
 
   let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
   addMember(joiner);
-  members.push(joiner);
 }
 
 $(document).ready(async () => {
@@ -93,7 +93,6 @@ $(document).ready(async () => {
   let leaf = crypto.getRandomValues(new Uint8Array(32));
   let creator = await TKEMState.oneMemberGroup(leaf);
   addMember(creator);
-  members = [creator];
 });
 
 </script>

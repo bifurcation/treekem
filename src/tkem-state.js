@@ -6,6 +6,18 @@ class TKEMState {
   constructor() {
     this.tkem = new TKEM();
   }
+
+  get index() {
+    return this.tkem.index;
+  }
+
+  get size() {
+    return this.tkem.size;
+  }
+
+  get nodes() {
+    return this.tkem.nodes;
+  }
   
   static async oneMemberGroup(leaf) {
     let state = new TKEMState();
@@ -98,16 +110,6 @@ class TKEMState {
   }
   
   handleRemove(remove) {/* TODO */}
-
-  // #ifdef COLORIZE
-  renderInit(id) {
-    this.tkem.renderInit(id);
-  }
-  
-  async render() {
-    return this.tkem.render();
-  }
-  // #endif /* def COLORIZE */
 }
 
 module.exports = {

@@ -3,3 +3,4 @@ window.iota = require('./iota');
 window.tm = require('./tree-math');
 window.TKEM = require('./tkem');
 window.TKEMState = require('./tkem-state').class;
+window.Renderer = require('./renderer');
