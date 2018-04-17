@@ -8,21 +8,21 @@ class TKEMState {
   }
   
   static async oneMemberGroup(leaf) {
-    let state = TKEMState();
-    state.tkem = TKEM.oneMemberGroup(leaf);
+    let state = new TKEMState();
+    state.tkem = await TKEM.oneMemberGroup(leaf);
     return state;
   }
 
   static async fromGroupAdd(initPriv, groupAdd) {
     let leaf = await ECKEM.decrypt(groupAdd.forJoiner.encryptedLeaf, initPriv);
-    let state = TKEMState();
-    state.tkem = await TKM.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
+    let state = new TKEMState();
+    state.tkem = await TKEM.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
     return state;
   }
 
   static async fromUserAdd(leaf, /* IGNORED */ userAdd, groupInitKey) {
-    let state = TKEMState();
-    state.tkem = TKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
+    let state = new TKEMState();
+    state.tkem = await TKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     return state;
   }
 
@@ -54,8 +54,8 @@ class TKEMState {
     };
   }
 
-  update(leaf) {
-    let ct = this.tkem.encrypt(leaf);
+  async update(leaf) {
+    let ct = await this.tkem.encrypt(leaf);
     return {
       from: this.tkem.index,
       ciphertexts: ct.ciphertexts,
@@ -80,7 +80,7 @@ class TKEMState {
   }
 
   async handleGroupAdd(ga) {
-    let pt = await this.tkem.decrypt(this.tkem.size, ga.ciphertexts);
+    let pt = await this.tkem.decrypt(this.tkem.size, ga.forGroup.ciphertexts);
     this.tkem.merge(ga.forGroup.nodes);
     this.tkem.merge(pt.nodes);
     this.tkem.size += 1;
@@ -98,9 +98,18 @@ class TKEMState {
   }
   
   handleRemove(remove) {/* TODO */}
+
+  // #ifdef COLORIZE
+  renderInit(id) {
+    this.tkem.renderInit(id);
+  }
+  
+  async render() {
+    return this.tkem.render();
+  }
+  // #endif /* def COLORIZE */
 }
 
 module.exports = {
   class: TKEMState,
-  test: test,
 };

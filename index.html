@@ -19,8 +19,9 @@ let members;
 
 function addMember(m) {
   // Add a tree
-  let divID = "tree" + m.index;
-  let tag = $(`<div class="number">${m.index}</div>`);
+  let index = m.tkem.index;
+  let divID = "tree" + index;
+  let tag = $(`<div class="number">${index}</div>`);
   let div = $(`<div id="${divID}" class="tree"></div>`);
   div.append(tag);
   $("#members").append(div);
@@ -30,86 +31,69 @@ function addMember(m) {
   m.render();
 
   // Add an update button
-  let buttonID = "update" + m.index;
-  let button = $(`<button id="buttonID">Update(${m.index})</button>`);
-  button.click(() => { update(m.index); });
+  let buttonID = "update" + index;
+  let button = $(`<button id="buttonID">Update(${index})</button>`);
+  button.click(() => { update(index); });
   $("#buttons").append(button);
-}
-
-async function initMembers(n) {
-  members = await TKEM.testMembers(n);
-  members.map(m => addMember(m));
 }
 
 async function update(k) {
   let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let ct = await members[k].encrypt(leaf);
-
+  let update = await members[k].update(leaf);
+  
   for (m2 of members) {
-    if (m2.index == k) {
+    if (m2.tkem.index == k) {
+      await m2.handleSelfUpdate(update, leaf);
+      m2.render();
       continue;
+    } else {
+      await m2.handleUpdate(update);
+      m2.render();
     }
-
-    let pt = await m2.decrypt(ct.index, ct.ciphertexts);
-    m2.merge(ct.nodes);
-    m2.merge(pt.nodes);
-    m2.render();
   }
-
-  members[k].merge(ct.privateNodes);
-  members[k].render();
 }
 
 async function userAdd() {
   let last = members[members.length - 1];
-  let size = last.size;
-  let frontier = last.frontier();
+  let gik = last.groupInitKey;
+  
   let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let ua = await TKEMState.join(leaf, gik);
 
-  let ua = await TKEM.class.userAdd(size, frontier, leaf);
   for (let m of members) {
-    let pt = await m.decrypt(size, ua.ciphertexts);
-    m.merge(ua.nodes);
-    m.merge(pt.nodes);
-    m.size = size + 1;
+    await m.handleUserAdd(ua);
     m.render();
   }
 
-  let joiner = await TKEM.class.fromFrontier(size, frontier, leaf);
+  let joiner = await TKEMState.fromUserAdd(leaf, ua, gik);
   addMember(joiner);
   members.push(joiner);
 }
 
 async function groupAdd() {
   let last = members[members.length - 1];
-  let size = last.size;
-  let frontier = last.frontier();
-  let leafIn = crypto.getRandomValues(new Uint8Array(32));
-
-  let initKP = await iota(new Uint8Array([2]));
-  let ga = await last.groupAdd(leafIn, initKP.publicKey);
-
-  // Instantiate joiner
-
+  
+  let initKP = await iota(crypto.getRandomValues(new Uint8Array(4)));
+  let ga = await last.add(initKP.publicKey);
+  
   for (let m of members) {
-    let pt = await m.decrypt(ga.forGroup.index, ga.forGroup.ciphertexts);
-    m.merge(ga.forGroup.nodes);
-    m.merge(pt.nodes);
-    m.size = ga.forGroup.size;
+    await m.handleGroupAdd(ga);
     m.render();
   }
 
-  let leaf = await ECKEM.decrypt(ga.forJoiner.encryptedLeaf, initKP.privateKey);
-  let joiner = await TKEM.class.fromFrontier(ga.forJoiner.size, ga.forJoiner.frontier, leaf);
+  let joiner = await TKEMState.fromGroupAdd(initKP.privateKey, ga);
   addMember(joiner);
   members.push(joiner);
 }
 
-$(document).ready(() => {
+$(document).ready(async () => {
   $("#userAdd").click(userAdd);
   $("#groupAdd").click(groupAdd);
 
-  initMembers(1);
+  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let creator = await TKEMState.oneMemberGroup(leaf);
+  addMember(creator);
+  members = [creator];
 });
 
 </script>
