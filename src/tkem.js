@@ -198,15 +198,13 @@ class TKEM {
       h = await hash(h);
     }
   
-    // Colorize the nodes
     // #ifdef COLORIZE
     let height = tm.level(root) || 1;
     let hue = Array.from(new Uint8Array(nodes[root].secret)).reduce((x, y) => x ^ y);
     let dl = Math.round((FADESTOP - FADESTART) / height);
     for (let i = 0; i < path.length; ++i) {
       let l = FADESTART + i * dl;
-      let color = `hsl(${hue}, 100%, ${l}%)`;
-      nodes[path[path.length - i - 1]].color = color;
+      nodes[path[path.length - i - 1]].color = [hue, 100, l];
     }
     // #endif /* def COLORIZE */
   

@@ -1,8 +1,8 @@
 'use strict'
 
 const tm = require('./tree-math');
+const util = require('./util');
 const SVG = require('svg.js');
-const cs = window.crypto.subtle;
 
 const PAD = 1;
 const RECTRAD = 5;
@@ -27,10 +27,9 @@ function resize(svg, width, height) {
   svg.size(w, h);
 }
 
-async function hue(k) {
-  let data = await cs.exportKey("spki", k);
-  let hue = Array.from(new Uint8Array(data)).reduce((x, y) => x ^ y);
-  return `hsl(${hue}, 100%, 50%)`;
+function hsl(vals) {
+  let [h, s, l] = vals;
+  return `hsl(${h}, ${s}%, ${l}%)`;
 }
 
 class Renderer {
@@ -78,8 +77,8 @@ class Renderer {
     // Apply colors
     let stroke = await Promise.all(index.map(async k => {
       return (!nodes[k])? DEFAULTSTROKE
-           : (nodes[k].color)? nodes[k].color
-           : await hue(nodes[k].public);
+           : (nodes[k].color)? hsl(nodes[k].color)
+           : hsl(await util.keyColor(nodes[k].public));
     }));
 
     let fill = index.map(k => {

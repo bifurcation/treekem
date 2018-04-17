@@ -1,6 +1,6 @@
 'use strict';
 
-//const ART = require('./art');
+const ART = require('./art').class;
 const iota = require('./iota');
 
 class ARTState {
@@ -21,36 +21,36 @@ class ARTState {
   }
 
   static async oneMemberGroup(leaf) {
-    let state = ARTState();
-    state.art = ART.oneMemberGroup(leaf);
+    let state = new ARTState();
+    state.art = await ART.oneMemberGroup(leaf);
     return state;
   }
 
   static async fromGroupAdd(initLeaf, groupAdd) {
     let initKP = await iota(initLeaf);
-    let leaf = DH.secret(initKP.privatKey, groupAdd.forJoiner.ephemeral);
+    let leaf = await DH.secret(initKP.privateKey, groupAdd.forJoiner.ephemeral);
 
-    let state = ARTState();
-    state.art = ART.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
+    let state = new ARTState();
+    state.art = await ART.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
     return state;
   }
 
   static async fromUserAdd(leaf, /* IGNORED */ userAdd, groupInitKey) {
-    let state = ARTState();
-    state.art = ART.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
+    let state = new ARTState();
+    state.art = await ART.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     return state;
   }
 
   static async join(leaf, groupInitKey) {
-    let art = ART.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
+    let art = await ART.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     return {
       path: art.dirpath(art.size - 1),
     }
   }
 
   async add(userInitPub) {
-    let kp = DH.newKeyPair();
-    let leaf = DH.secret(kp.privateKey, userInitPub);
+    let kp = await DH.newKeyPair();
+    let leaf = await DH.secret(kp.privateKey, userInitPub);
 
     let gik = this.groupInitKey;
     let ua = await ARTState.join(leaf, gik);
@@ -66,7 +66,7 @@ class ARTState {
   }
 
   async update(leaf) {
-    let path = this.art.updatePath(leaf);
+    let path = await this.art.updatePath(leaf);
     return { path: path };
   }
   
