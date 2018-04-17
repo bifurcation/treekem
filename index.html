@@ -18,6 +18,16 @@ function hex(ab) {
 let members = [];
 let renderers = [];
 
+function lockWrap(action) {
+  return () => {
+    $("button").prop("disabled", true);
+    action()
+      .then(() => {
+        $("button").prop("disabled", false);
+      });
+  };
+}
+
 function addMember(m) {
   members.push(m);
 
@@ -37,14 +47,15 @@ function addMember(m) {
   // Add an update button
   let buttonID = "update" + index;
   let button = $(`<button id="buttonID">Update(${index})</button>`);
-  button.click(() => { update(index); });
+  button.click(lockWrap(() => { return update(index); }));
   $("#buttons").append(button);
 }
 
 async function userAdd() {
   let last = members[members.length - 1];
   let leaf = crypto.getRandomValues(new Uint8Array(32));
-  let ua = await TKEMState.join(leaf, last.groupInitKey);
+  let gik = last.groupInitKey
+  let ua = await TKEMState.join(leaf, gik);
 
   for (let m of members) {
     await m.handleUserAdd(ua);
@@ -85,8 +96,8 @@ async function update(k) {
 }
 
 $(document).ready(async () => {
-  $("#userAdd").click(userAdd);
-  $("#groupAdd").click(groupAdd);
+  $("#userAdd").click(lockWrap(userAdd));
+  $("#groupAdd").click(lockWrap(groupAdd));
 
   let leaf = crypto.getRandomValues(new Uint8Array(32));
   let creator = await TKEMState.oneMemberGroup(leaf);
