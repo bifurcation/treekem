@@ -7,7 +7,7 @@ window.ART = require('./art');
 window.TKEM = require('./treekem');
 
 window.FlatState = require('./flat-state');
-window.TKEMState = require('./treekem-state');
+window.TreeKEMState = require('./treekem-state');
 window.ARTState = require('./art-state');
 window.Renderer = require('./renderer');
 window.StateTester = require('./state-tester');

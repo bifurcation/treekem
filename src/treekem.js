@@ -26,10 +26,10 @@ function hash(x) {
   return cs.digest("SHA-256", x);
 }
 
-class TKEM {
+class TreeKEM {
   /*
-   * TKEM objects should not be constructed directly.  Instead, use
-   * the `TKEM.fromX` factory methods.  This only exists to give
+   * TreeKEM objects should not be constructed directly.  Instead, use
+   * the `TreeKEM.fromX` factory methods.  This only exists to give
    * certain variables public exposure for debugging, and as a base
    * for the factory methods.  It would be private in C++.
    */
@@ -40,14 +40,14 @@ class TKEM {
   }
 
   /*
-   * Construct a TKEM representing a group with a single member,
+   * Construct a TreeKEM representing a group with a single member,
    * with the given leaf secret.
    */
   static async oneMemberGroup(leaf) {
-    let tkem = new TKEM();
+    let tkem = new TreeKEM();
     tkem.size = 1;
     tkem.index = 0;
-    tkem.merge(await TKEM.hashUp(0, 1, leaf));
+    tkem.merge(await TreeKEM.hashUp(0, 1, leaf));
     return tkem;
   }
 
@@ -56,12 +56,12 @@ class TKEM {
    * frontier by adding a member with the given leaf secret.
    */
   static async fromFrontier(size, frontier, leaf) {
-    let tkem = new TKEM();
+    let tkem = new TreeKEM();
     tkem.size = size + 1;
     tkem.index = size;
     tkem.merge(frontier);
 
-    let nodes = await TKEM.hashUp(2 * tkem.index, tkem.size, leaf);
+    let nodes = await TreeKEM.hashUp(2 * tkem.index, tkem.size, leaf);
     tkem.merge(nodes);
     return tkem;
   }
@@ -73,7 +73,7 @@ class TKEM {
    * Arguments:
    *   * leaf - BufferSource with leaf secret
    *
-   * Returns: Promise resolving to a TKEMCiphertext object:
+   * Returns: Promise resolving to a TreeKEMCiphertext object:
    *   {
    *     // Index of the sender in the tree
    *     index: Int
@@ -93,7 +93,7 @@ class TKEM {
     let copath = tm.copath(2 * this.index, this.size);
 
     // Generate hashes up the tree
-    let privateNodes = await TKEM.hashUp(2 * this.index, this.size, leaf);
+    let privateNodes = await TreeKEM.hashUp(2 * this.index, this.size, leaf);
     let nodes = {};
     for (let n in privateNodes) {
       nodes[n] = util.publicNode(privateNodes[n]);
@@ -146,7 +146,7 @@ class TKEM {
     // Hash up to the root (plus one if we're growing the tree)
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
     newDirpath.push(tm.root(senderSize));
-    let nodes = await TKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
+    let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
 
     let root = tm.root(senderSize);
     return {
@@ -234,7 +234,7 @@ async function testMembers(size) {
   let members = [];
   const root = tm.root(size);
   for (let i = 0; i < size; ++i) {
-    members[i] = new TKEM();
+    members[i] = new TreeKEM();
     members[i].size = size;
     members[i].index = i;
 
@@ -372,6 +372,6 @@ async function test() {
 }
 
 module.exports = {
-  class: TKEM,
+  class: TreeKEM,
   test: test,
 };

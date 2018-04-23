@@ -1,10 +1,10 @@
 'use strict';
 
-const TKEM = require('./treekem').class;
+const TreeKEM = require('./treekem').class;
 
-class TKEMState {
+class TreeKEMState {
   constructor() {
-    this.tkem = new TKEM();
+    this.tkem = new TreeKEM();
   }
 
   get index() {
@@ -28,27 +28,27 @@ class TKEMState {
   }
   
   static async oneMemberGroup(leaf) {
-    let state = new TKEMState();
-    state.tkem = await TKEM.oneMemberGroup(leaf);
+    let state = new TreeKEMState();
+    state.tkem = await TreeKEM.oneMemberGroup(leaf);
     return state;
   }
 
   static async fromGroupAdd(initLeaf, groupAdd) {
     let kp = await iota(initLeaf);
     let leaf = await ECKEM.decrypt(groupAdd.forJoiner.encryptedLeaf, kp.privateKey);
-    let state = new TKEMState();
-    state.tkem = await TKEM.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
+    let state = new TreeKEMState();
+    state.tkem = await TreeKEM.fromFrontier(groupAdd.forJoiner.size, groupAdd.forJoiner.frontier, leaf);
     return state;
   }
 
   static async fromUserAdd(leaf, /* IGNORED */ userAdd, groupInitKey) {
-    let state = new TKEMState();
-    state.tkem = await TKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
+    let state = new TreeKEMState();
+    state.tkem = await TreeKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     return state;
   }
 
   static async join(leaf, groupInitKey) {
-    let tkem = await TKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
+    let tkem = await TreeKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
     let ct = await tkem.encrypt(leaf)
     return {
       ciphertexts: ct.ciphertexts,
@@ -61,7 +61,7 @@ class TKEMState {
     let encryptedLeaf = await ECKEM.encrypt(leaf, userInitPub);
     
     let gik = this.groupInitKey;
-    let ua = await TKEMState.join(leaf, gik);
+    let ua = await TreeKEMState.join(leaf, gik);
 
     return {
       forGroup: ua,
@@ -106,7 +106,7 @@ class TKEMState {
   }
 
   async handleSelfUpdate(/* IGNORED */ update, leaf) {
-    let privateNodes = await TKEM.hashUp(2*this.tkem.index, this.tkem.size, leaf);
+    let privateNodes = await TreeKEM.hashUp(2*this.tkem.index, this.tkem.size, leaf);
     this.tkem.merge(privateNodes);
   }
 
@@ -119,4 +119,4 @@ class TKEMState {
   handleRemove(remove) {/* TODO */}
 }
 
-module.exports = TKEMState;
+module.exports = TreeKEMState;
