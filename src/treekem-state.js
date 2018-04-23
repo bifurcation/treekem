@@ -1,6 +1,6 @@
 'use strict';
 
-const TKEM = require('./tkem').class;
+const TKEM = require('./treekem').class;
 
 class TKEMState {
   constructor() {
