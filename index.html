@@ -2,7 +2,7 @@
 <html>
 
 <head>
-<title>TKEM</title>
+<title>TreeKEM</title>
 <script src="./dist/index.js"></script>
 <script src="./web/jquery-3.3.1.min.js"></script>
 <script>
@@ -16,9 +16,15 @@ function hex(ab) {
 }
 
 let stateTypes = {
-  "TKEM": TreeKEMState,
+  "TreeKEM": TreeKEMState,
   "ART":  ARTState,
   "Flat": FlatState,
+};
+
+let stateTypeLegends = {
+  "TreeKEM": "Colors represent hash chains. Lightness represents distance along the chain.",
+  "ART":  "DH is indicated by color 'averaging'",
+  "Flat": "Colors indicate different public keys",
 };
 
 let StateType = FlatState;
@@ -40,6 +46,7 @@ function selectStateType(label) {
   let id = "stateType-" + label;
   $("button.stateType").removeClass("selectedState");
   $("#" + id).addClass("selectedState");
+  $("#stateTypeLegend").text(stateTypeLegends[label]);
 
   StateType = stateTypes[label];
   return init();
@@ -134,7 +141,7 @@ $(document).ready(async () => {
   $("#userAdd").click(lockWrap(userAdd));
   $("#groupAdd").click(lockWrap(groupAdd));
   
-  selectStateType("TKEM");
+  selectStateType("TreeKEM");
 });
 
 </script>
@@ -145,16 +152,16 @@ body {
   margin: 0;
 }
 
-#stateTypes, #buttons, #legend, #members {
+#stateTypes, #buttons, div.legend, #members {
   padding: 2ex;
   width: 100%;
 }
 
-#stateTypes, #buttons, #legend {
+#stateTypes, #buttons, div.legend {
   border-bottom: 1px solid #999;
 }
 
-#legend {
+div.legend {
   background: #ccc;
 }
 
@@ -197,11 +204,11 @@ div.tree svg {
     <button id="userAdd">UserAdd</button>
     <button id="groupAdd">GroupAdd</button>
   </div>
-  <div id="legend">
+  <div class="legend">
     Filled boxes are nodes with private keys.
     Empty boxes are nodes with only public keys.
-    Colors represent hash chains.
-    Lightness represents distance along the chain.
+    Grey boxes are nodes where there is no data.
+    <span id="stateTypeLegend"></span>
   </div>
   <div id="members"></div>
 </body>
