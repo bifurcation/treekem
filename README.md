@@ -6,10 +6,11 @@ and KEM cases, the participants are arranged in a tree.  The DH case
 corresponds to [ART](https://eprint.iacr.org/2017/666).  Since we're
 using KEM and a tree here, we call the approach TreeKEM.
 
-Right now the implementation is verify incomplete.  It basically
-just loads a couple of things into the browser that you can play
-with.
-
+In the `src` folder, there are implementations of three different
+group key agreement protocols: ART, TreeKEM, and a "flat" protocol
+where everyone just stores / sends `O(N)` keys.  After building, you
+can use `index.html` to exercise these protocols and see
+visualizations of how they work.
 
 ## Quickstart
 
