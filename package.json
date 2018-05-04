@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "dependencies": {
     "bn.js": "^4.11.8",
+    "browserify": "^16.2.0",
     "elliptic": "^6.4.0",
     "svg.js": "^2.6.4"
   },
