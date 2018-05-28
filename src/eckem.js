@@ -2,6 +2,7 @@
 
 const cs = window.crypto.subtle;
 const DH = require('./dh');
+const base64 = require('./base64');
 
 function AES_GCM_ENC(iv) {
   return { 
@@ -33,8 +34,8 @@ async function encrypt(plaintext, pubA) {
 
   return {
     pub: kpE.publicKey,
-    iv: iv,
-    ct: ct,
+    iv: base64.stringify(iv),
+    ct: base64.stringify(ct),
   };
 }
 
@@ -46,11 +47,13 @@ async function encrypt(plaintext, pubA) {
  * Returns: Promise<ArrayBuffer>
  */
 async function decrypt(ciphertext, priv) {
+  const iv = base64.parse(ciphertext.iv);
+  const ct = base64.parse(ciphertext.ct);
+  const alg = { name: "AES-GCM", iv: iv };
+
   const ekData = await DH.secret(priv, ciphertext.pub);
   const ek = await cs.importKey("raw", ekData, "AES-GCM", false, ['decrypt']);
-
-  const alg = { name: "AES-GCM", iv: ciphertext.iv };
-  return cs.decrypt(alg, ek, ciphertext.ct);
+  return cs.decrypt(alg, ek, ct);
 }
 
 /*
