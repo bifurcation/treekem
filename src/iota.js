@@ -41,7 +41,7 @@ async function iota(secret) {
   }; 
   return {
     privateKey: await cs.importKey("jwk", privJWK, alg, false, ["deriveKey", "deriveBits"]),
-    publicKey: await cs.importKey("jwk", pubJWK, alg, true, []),
+    publicKey: pubJWK,
   }
 }
 
