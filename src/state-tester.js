@@ -58,7 +58,10 @@ async function testUserAdd(State) {
   for (let i = 1; i < testGroupSize; ++i) {
     let leaf = window.crypto.getRandomValues(new Uint8Array(32));
     let gik = members[members.length - 1].groupInitKey;
-    let ua = await State.join(leaf, gik);
+    let uaIn = await State.join(leaf, gik);
+
+    let uaEnc = JSON.stringify(uaIn);
+    let ua = JSON.parse(uaEnc);
 
     let joiner = await State.fromUserAdd(leaf, ua, gik);
     
@@ -88,7 +91,10 @@ async function testGroupAdd(State) {
   for (let i = 1; i < testGroupSize; ++i) {
     let initLeaf = window.crypto.getRandomValues(new Uint8Array(4));
     let initKP = await iota(initLeaf)
-    let ga = await members[members.length - 1].add(initKP.publicKey)
+    let gaIn = await members[members.length - 1].add(initKP.publicKey)
+
+    let gaEnc = JSON.stringify(gaIn);
+    let ga = JSON.parse(gaEnc);
 
     let joiner = await State.fromGroupAdd(initLeaf, ga);
 
@@ -130,7 +136,10 @@ async function testUpdate(State) {
   // Have each member update and verify that others are consistent
   for (let m1 of members) {
     let leaf = crypto.getRandomValues(new Uint8Array(32));
-    let update = await m1.update(leaf);
+    let updateIn = await m1.update(leaf);
+    
+    let updateEnc = JSON.stringify(updateIn);
+    let update = JSON.parse(updateEnc);
 
     await m1.handleSelfUpdate(update, leaf);
 
