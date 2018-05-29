@@ -5,8 +5,9 @@ const cs = window.crypto.subtle;
 
 // #ifdef COLORIZE
 async function keyColor(k) {
-  let data = await cs.exportKey("spki", k);
-  let hue = Array.from(new Uint8Array(data)).reduce((x, y) => x ^ y);
+  let jwk = JSON.stringify(k);
+  let jsonData = Array.prototype.map.call(jwk, c => c.charCodeAt(0));
+  let hue = Array.from(new Uint8Array(jsonData)).reduce((x, y) => x ^ y);
   return [hue, 100, 50];
 }
 
