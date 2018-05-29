@@ -4,6 +4,7 @@ const ECKEM = require('./eckem');
 const iota = require('./iota');
 const tm = require('./tree-math');
 const util = require('./util');
+const dh = require('./dh');
 const cs = window.crypto.subtle;
 
 // #ifdef COLORIZE
@@ -175,6 +176,30 @@ class TreeKEM {
     return util.nodePath(this.nodes, tm.frontier(this.size));
   }
 
+  /*
+   * Two instances are equal if they agree on the nodes where they
+   * overlap.
+   */
+  async equal(other) {
+    if (this.size != other.size) {
+      return false;
+    }
+
+    for (let i in this.nodes) {
+      if (!other.nodes[i]) {
+        continue;
+      }
+
+      let fp1 = await dh.fingerprint(this.nodes[i].public);
+      let fp2 = await dh.fingerprint(other.nodes[i].public);
+      if (fp1 !== fp2) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   static async hashUp(index, size, h) {
     // Compute hashes up the tree
     let nodes = {};
@@ -209,6 +234,15 @@ class TreeKEM {
     // #endif /* def COLORIZE */
   
     return nodes;
+  }
+
+  async dump(label) {
+    console.log("===== treekem dump (", label,") =====");
+    console.log("size:", this.size);
+    console.log("nodes:", this.nodes);
+    for (let i in this.nodes) {
+      console.log("  ", i, ":", await dh.fingerprint(this.nodes[i].public));
+    }
   }
 }
 
@@ -261,13 +295,6 @@ async function testMembers(size) {
 
 async function testEncryptDecrypt() {
   const testGroupSize = 5;
-
-  // Values you should see on inspection:
-  // h^0 = 00010203
-  // h^1 = 054edec1d0211f624fed0cbca9d4f9400b0e491c43742af2c5b0abebf0c990d8
-  // h^2 = f7a355c00c89a08c80636bed35556a210b51786f6803a494f28fc5ba05959fc2
-  // h^3 = b4e844306e22060209c2f63956ab8bd5266cb548472d6773ebb41eb5bd700173
-  // h^4 = 858b98df0255fbd305d9b772e19159e3f92b5ed7a458c549040f4d6331b5ea19 <-- too far
   const seed = new Uint8Array([0,1,2,3]);
 
   // Create a group with the specified size
@@ -276,14 +303,17 @@ async function testEncryptDecrypt() {
   // Have each member send and be received by all members
   for (const m of members) {
     let ct = await m.encrypt(seed);
-    m.merge(ct.privateNodes);
+    let privateNodes = await TreeKEM.hashUp(2 * m.index, m.size, seed);
+ 
+    m.merge(ct.nodes)
+    m.merge(privateNodes);
 
     for (let m2 of members) {
       if (m2.index == m.index) {
         continue;
       }
 
-      let pt = await m2.decrypt(ct.index, ct.ciphertexts);
+      let pt = await m2.decrypt(m.index, ct.ciphertexts);
       if (!arrayBufferEqual(ct.root, pt.root)) {
         console.log("error:", m.index, "->", m2.index);
         console.log("send:", hex(ct.root));
@@ -308,34 +338,38 @@ async function testEncryptDecrypt() {
 
 async function testSimultaneousUpdate() {
   const testGroupSize = 5;
-  const seed = new Uint8Array([0,1,2,3]);
   let members = await testMembers(testGroupSize);
 
   // Have each member emit an update, then have everyone compute and
   // apply a merged update
+  let seeds = members.map(m => new Uint8Array([m.index]));
   let cts = await Promise.all(members.map(m => {
-    return m.encrypt(new Uint8Array([m.index]));
+    return m.encrypt(seeds[m.index]);
   }));
 
   let secrets = await Promise.all(members.map(async m => {
+    let privateNodes = await TreeKEM.hashUp(2 * m.index, m.size, seeds[m.index]);
+
     const pts = (await Promise.all(cts.map((ct, i) => {
-      return (i == m.index)? cts[m.index] : m.decrypt(ct.index, ct.ciphertexts);
+      return (i == m.index)? null : m.decrypt(i, ct.ciphertexts);
     })));
 
     // The secret for the merge will be the XOR of all the
     // individual root secrets
-    let secret = pts.map(pt => pt.root).reduce(xor);
+    const roots = pts.map((pt, i) => {
+      return (i == m.index)? privateNodes[tm.root(m.size)] : pt.root;
+    });
+    let secret = roots.reduce(xor);
     
     // The key pair changes are applied in order of arrival
     for (let i = 0; i < pts.length; ++i) {
-      m.merge(cts[i].nodes);
-
-      if (i != m.index) {
-        m.merge(pts[i].nodes);
-      } else {
-        // Actually a ciphertext
-        m.merge(pts[i].privateNodes);
+      if (i == m.index) {
+        m.merge(privateNodes);
+        continue;
       }
+
+      m.merge(cts[i].nodes);
+      m.merge(pts[i].nodes);
     }
     return secret;
   }));

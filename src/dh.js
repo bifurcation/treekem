@@ -1,5 +1,6 @@
 'use strict';
 
+const base64 = require('./base64');
 const cs = window.crypto.subtle;
 
 const ECDH_KEY_USAGES = ["deriveBits"];
@@ -45,8 +46,7 @@ async function secret(priv, pub) {
 async function fingerprint(pub) {
   const spki = await cs.exportKey("spki", pub);
   const digest = await cs.digest("SHA-256", spki);
-  const arr = Array.from(new Uint8Array(digest))
-  return arr.map(x => ('0' + x.toString(16)).slice(-2)).join('');
+  return base64.stringify(digest);
 }
 
 /*
