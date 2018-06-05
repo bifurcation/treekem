@@ -37,7 +37,7 @@ async function init() {
   members = [];
   renderers = [];
 
-  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let leaf = base64.random(32);
   let creator = await StateType.oneMemberGroup(leaf);
   addMember(creator);
 }
@@ -87,7 +87,7 @@ function addMember(m) {
 
 async function userAdd() {
   let last = members[members.length - 1];
-  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let leaf = base64.random(32);
   let gik = last.groupInitKey
   let ua = await StateType.join(leaf, gik);
 
@@ -103,7 +103,7 @@ async function userAdd() {
 async function groupAdd() {
   let last = members[members.length - 1];
  
-  let initLeaf = crypto.getRandomValues(new Uint8Array(4));
+  let initLeaf = base64.random(32);
   let initKP = await iota(initLeaf);
   let ga = await last.add(initKP.publicKey);
  
@@ -117,7 +117,7 @@ async function groupAdd() {
 }
 
 async function update(k) {
-  let leaf = crypto.getRandomValues(new Uint8Array(32));
+  let leaf = base64.random(32);
   let update = await members[k].update(leaf);
   
   for (m2 of members) {

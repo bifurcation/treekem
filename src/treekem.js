@@ -23,8 +23,10 @@ function xor(a, b) {
   return (new Uint8Array(ua.map((x, i) => x ^ ub[i]))).buffer;
 }
 
-function hash(x) {
-  return cs.digest("SHA-256", x);
+async function hash(x64) {
+  const x = base64.parse(x64);
+  const d = await cs.digest("SHA-256", x);
+  return base64.stringify(d);
 }
 
 class TreeKEM {
@@ -38,6 +40,14 @@ class TreeKEM {
     this.size = 0;
     this.index = 0;
     this.nodes = [];
+  }
+
+  static fromJSON(obj) {
+    let out = new TreeKEM();
+    out.size = obj.size;
+    out.index = obj.index;
+    out.nodes = obj.nodes;
+    return out;
   }
 
   /*
@@ -225,7 +235,8 @@ class TreeKEM {
   
     // #ifdef COLORIZE
     let height = tm.level(root) || 1;
-    let hue = Array.from(new Uint8Array(nodes[root].secret)).reduce((x, y) => x ^ y);
+    let secret = base64.parse(nodes[root].secret);
+    let hue = Array.from(new Uint8Array(secret)).reduce((x, y) => x ^ y);
     let dl = Math.round((FADESTOP - FADESTART) / height);
     for (let i = 0; i < path.length; ++i) {
       let l = FADESTART + i * dl;

@@ -20,6 +20,12 @@ class ARTState {
     return this.art.nodes;
   }
 
+  static fromJSON(obj) {
+    let out = new ARTState();
+    out.art = ART.fromJSON(obj.art);
+    return out;
+  }
+
   static async oneMemberGroup(leaf) {
     let state = new ARTState();
     state.art = await ART.oneMemberGroup(leaf);

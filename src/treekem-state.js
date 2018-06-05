@@ -26,6 +26,12 @@ class TreeKEMState {
   async dump() {
     return this.tkem.dump();
   }
+
+  static fromJSON(obj) {
+    let out = new TreeKEMState();
+    out.tkem = TreeKEM.fromJSON(obj.tkem);
+    return out;
+  }
   
   static async oneMemberGroup(leaf) {
     let state = new TreeKEMState();
@@ -57,7 +63,7 @@ class TreeKEMState {
   }
 
   async add(userInitPub) {
-    let leaf = window.crypto.getRandomValues(new Uint8Array(32));
+    let leaf = base64.random(32);
     let encryptedLeaf = await ECKEM.encrypt(leaf, userInitPub);
     
     let gik = this.groupInitKey;

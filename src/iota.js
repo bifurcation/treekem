@@ -3,6 +3,7 @@
 const cs = window.crypto.subtle;
 const EC = require('elliptic').ec;
 const BN = require('bn.js');
+const base64 = require('./base64');
 
 const p256 = new EC('p256');
 
@@ -17,8 +18,9 @@ function bn2b64(n) {
                .replace(/\//g, '_');
 }
 
-async function iota(secret) {
+async function iota(secret64) {
   // Digest the input
+  const secret = base64.parse(secret64);
   const digest = await cs.digest("SHA-256", secret);
 
   // Convert it to an integer and compute the resulting key pair
@@ -40,7 +42,7 @@ async function iota(secret) {
     namedCurve: "P-256",
   }; 
   return {
-    privateKey: await cs.importKey("jwk", privJWK, alg, false, ["deriveKey", "deriveBits"]),
+    privateKey: privJWK,
     publicKey: pubJWK,
   }
 }

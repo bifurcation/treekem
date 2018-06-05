@@ -1,3 +1,4 @@
+window.base64 = require('./base64');
 window.DH = require('./dh');
 window.ECKEM = require('./eckem');
 window.iota = require('./iota');

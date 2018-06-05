@@ -27,9 +27,9 @@ async function _export(pub) {
  *   }
  */
 async function newKeyPair() {
-  const kp = await cs.generateKey(ECDH_GEN, false, ECDH_KEY_USAGES);
+  const kp = await cs.generateKey(ECDH_GEN, true, ECDH_KEY_USAGES);
   return {
-    privateKey: kp.privateKey,
+    privateKey: await _export(kp.privateKey),
     publicKey: await _export(kp.publicKey),
   };
 }
@@ -41,14 +41,17 @@ async function newKeyPair() {
  *
  * Returns: Promise resolving to ArrayBuffer
  */
-async function secret(priv, pubJWK) {
+async function secret(privJWK, pubJWK) {
+  const priv = await _import(privJWK);
   const pub = await _import(pubJWK);
   const alg = { 
     name: "ECDH", 
     namedCurve: "P-256", 
     public: pub,
   };
-  return await cs.deriveBits(alg, priv, SECRET_BITS);
+
+  const ss = await cs.deriveBits(alg, priv, SECRET_BITS);
+  return base64.stringify(ss);
 }
 
 /*
@@ -77,8 +80,8 @@ async function test() {
     const kpB = await newKeyPair();
 
     console.log("secret...");
-    const ssAB = base64.stringify(await secret(kpA.privateKey, kpB.publicKey));
-    const ssBA = base64.stringify(await secret(kpB.privateKey, kpA.publicKey));
+    const ssAB = await secret(kpA.privateKey, kpB.publicKey);
+    const ssBA = await secret(kpB.privateKey, kpA.publicKey);
     
     console.log("[DH]", (ssAB == ssBA)? "PASS" : "FAIL");
   } catch (err) {

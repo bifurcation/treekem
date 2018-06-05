@@ -23,14 +23,16 @@ function AES_GCM_ENC(iv) {
  *     ct: BufferSource
  *   }
  */
-async function encrypt(plaintext, pubA) {
+async function encrypt(pt64, pubA) {
+  const pt = base64.parse(pt64);
   const kpE = await DH.newKeyPair();
-  const ekData = await DH.secret(kpE.privateKey, pubA);
+  const ekData64 = await DH.secret(kpE.privateKey, pubA);
+  const ekData = base64.parse(ekData64);
   const ek = await cs.importKey("raw", ekData, "AES-GCM", false, ['encrypt']);
 
   const iv = window.crypto.getRandomValues(new Uint8Array(12))
   const alg = { name: "AES-GCM", iv: iv };
-  const ct = await cs.encrypt(alg, ek, plaintext);
+  const ct = await cs.encrypt(alg, ek, pt);
 
   return {
     pub: kpE.publicKey,
@@ -51,9 +53,11 @@ async function decrypt(ciphertext, priv) {
   const ct = base64.parse(ciphertext.ct);
   const alg = { name: "AES-GCM", iv: iv };
 
-  const ekData = await DH.secret(priv, ciphertext.pub);
+  const ekData64 = await DH.secret(priv, ciphertext.pub);
+  const ekData = base64.parse(ekData64);
   const ek = await cs.importKey("raw", ekData, "AES-GCM", false, ['decrypt']);
-  return cs.decrypt(alg, ek, ct);
+  const pt = await cs.decrypt(alg, ek, ct);
+  return base64.stringify(pt);
 }
 
 /*

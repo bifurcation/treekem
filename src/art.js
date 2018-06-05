@@ -13,7 +13,16 @@ class ART {
    */
   constructor() {
     this.size = 0;
+    this.index = 0;
     this.nodes = [];
+  }
+
+  static fromJSON(obj) {
+    let out = new ART();
+    out.size = obj.size;
+    out.index = obj.index;
+    out.nodes = obj.nodes;
+    return out;
   }
 
   /*

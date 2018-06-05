@@ -2,6 +2,7 @@
 
 const iota = require('./iota');
 const DH = require('./dh');
+const base64 = require('./base64');
 
 async function nodeEqual(lhs, rhs) {
   let lfp = await DH.fingerprint(lhs.public);
@@ -52,11 +53,11 @@ async function groupDump(label, group) {
 async function testUserAdd(State) {
   const testGroupSize = 5;
 
-  let creator = await State.oneMemberGroup(new Uint8Array([0]));
+  let creator = await State.oneMemberGroup(base64.random(32));
   let members = [creator];
 
   for (let i = 1; i < testGroupSize; ++i) {
-    let leaf = window.crypto.getRandomValues(new Uint8Array(32));
+    let leaf = base64.random(32);
     let gik = members[members.length - 1].groupInitKey;
     let uaIn = await State.join(leaf, gik);
 
@@ -85,11 +86,11 @@ async function testUserAdd(State) {
 async function testGroupAdd(State) {
   const testGroupSize = 5;
 
-  let creator = await State.oneMemberGroup(new Uint8Array([0]));
+  let creator = await State.oneMemberGroup(base64.random(32));
   let members = [creator];
 
   for (let i = 1; i < testGroupSize; ++i) {
-    let initLeaf = window.crypto.getRandomValues(new Uint8Array(4));
+    let initLeaf = base64.random(32);
     let initKP = await iota(initLeaf)
     let gaIn = await members[members.length - 1].add(initKP.publicKey)
 
@@ -115,13 +116,15 @@ async function testGroupAdd(State) {
   console.log("[state-group-add] PASS");
 }
 
-async function testUpdate(State) {
+async function testUpdate(State, transcode) {
+  let label = (transcode)? 'state-json' : 'state-update';
+
   // Create a group via GroupAdds
   const testGroupSize = 5;
-  let creator = await State.oneMemberGroup(new Uint8Array([0]));
+  let creator = await State.oneMemberGroup(base64.random(32));
   let members = [creator];
   for (let i = 1; i < testGroupSize; ++i) {
-    let initLeaf = window.crypto.getRandomValues(new Uint8Array(4));
+    let initLeaf = base64.random(32);
     let initKP = await iota(initLeaf);
     let ga = await members[members.length - 1].add(initKP.publicKey)
 
@@ -133,9 +136,22 @@ async function testUpdate(State) {
     members.push(joiner);
   }
 
+  if (transcode) {
+    let encoded = members.map(m => JSON.stringify(m));
+    let decoded = encoded.map(e => JSON.parse(e));
+    let revived = decoded.map(d => State.fromJSON(d));
+
+    let eqp = members.map(async (m, i) => groupEqual(m, revived[i]));
+    let eqr = await Promise.all(eqp);
+    let eq = eqr.reduce((x, y) => x && y);
+    if (!eq) {
+      throw label;
+    }
+  }
+
   // Have each member update and verify that others are consistent
   for (let m1 of members) {
-    let leaf = crypto.getRandomValues(new Uint8Array(32));
+    let leaf = base64.random(32);
     let updateIn = await m1.update(leaf);
     
     let updateEnc = JSON.stringify(updateIn);
@@ -154,18 +170,19 @@ async function testUpdate(State) {
       if (!eq) {
         await groupDump(m1.index, m1);
         await groupDump(m2.index, m2);
-        throw 'state-group-add';
+        throw label;
       }
     }
   }
   
-  console.log("[state-update] PASS");
+  console.log(`[${label}] PASS`);
 }
 
 module.exports = {
   test: async function(State) {
     await testUserAdd(State);
     await testGroupAdd(State);
-    await testUpdate(State);
+    await testUpdate(State, false);
+    await testUpdate(State, true);
   },
 };
