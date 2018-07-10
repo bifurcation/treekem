@@ -1,8 +1,10 @@
+window.util = require('./util');
 window.base64 = require('./base64');
 window.DH = require('./dh');
 window.ECKEM = require('./eckem');
 window.iota = require('./iota');
 window.tm = require('./tree-math');
+window.hkdf = require('./hkdf');
 
 window.ART = require('./art');
 window.TKEM = require('./treekem');

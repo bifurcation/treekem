@@ -122,11 +122,26 @@ function nodePath(nodes, path) {
   return out;
 }
 
+function string2ab(s) {
+  let abv = new Uint16Array(s.length);
+  Array.from(s).map((c, i) => { abv[i] = c.charCodeAt(0); });
+  return abv.buffer;
+}
+
+function ab2string(ab) {
+  let abv = new Uint16Array(ab);
+  let s = "";
+  Array.from(abv).map(c => { s += String.fromCharCode(c); });
+  return s;
+}
+
 module.exports = {
   keyColor: keyColor,
   colorAvg: colorAvg,
   newNode: newNode,
   publicNode: publicNode,
   nodePath: nodePath,
+  string2ab: string2ab,
+  ab2string: ab2string,
 }
 
