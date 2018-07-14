@@ -1,6 +1,6 @@
 'use strict';
 
-const DH = require('./DH');
+const DH = require('./dh');
 const tm = require('./tree-math');
 const util = require('./util');
 
