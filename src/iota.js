@@ -21,7 +21,14 @@ function bn2b64(n) {
 async function iota(secret64) {
   // Digest the input
   const secret = base64.parse(secret64);
-  const digest = await cs.digest("SHA-256", secret);
+  const salg = {
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: Buffer.from("iota"),
+    info: Buffer.alloc(0)
+  };
+  const skey = await cs.importKey("raw", secret, salg, false, ["deriveBits"]);
+  const digest = await cs.deriveBits(salg, skey, 256);
 
   // Convert it to an integer and compute the resulting key pair
   const arr = Array.from(new Uint8Array(digest));
