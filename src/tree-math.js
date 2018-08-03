@@ -146,6 +146,19 @@ function frontier(n) {
   return f;
 }
 
+function shadow(x, n) {
+  let h = level(x);
+  let L = x;
+  let R = x;
+  while (h > 0) {
+    L = left(L);
+    R = right(R, n);
+    h -= 1;
+  }
+
+  return [...Array(R - L + 1).keys()].map(x => x + L);
+}
+
 function leaves(n) {
   return [...Array(n).keys()].map(x => 2*x);
 }
@@ -208,7 +221,7 @@ function testRelations() {
     { l: "sibling", f: x => sibling(x, n), a: aSibling },
   ];
 
-  for (c of cases) {
+  for (let c of cases) {
     let q = index.map(c.f);
     if (!arrayEqual(q, c.a)) {
       console.log(c.l, q, c.a);
@@ -297,6 +310,30 @@ function testPaths() {
     [17, 7]
   ];
 
+  const aShadow = [
+    [0],
+    [0, 1, 2],
+    [2],
+    [0, 1, 2, 3, 4, 5, 6],
+    [4],
+    [4, 5, 6],
+    [6],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+    [8],
+    [8, 9, 10],
+    [10],
+    [8, 9, 10, 11, 12, 13, 14],
+    [12],
+    [12, 13, 14],
+    [14],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    [16],
+    [16, 17, 18],
+    [18],
+    [16, 17, 18, 19, 20],
+    [20],
+  ];
+
   for (let x = 0; x < nodeWidth(n); x += 1) {
     let d = dirpath(x, n);
     if (!arrayEqual(d, aDirpath[x])) {
@@ -308,6 +345,12 @@ function testPaths() {
     if (!arrayEqual(c, aCopath[x])) {
       console.log('copath', c, aCopath[x]);
       throw 'copath';
+    }
+
+    let s = shadow(x, n);
+    if (!arrayEqual(s, aShadow[x])) {
+      console.log('shadow', s, aShadow[x]);
+      throw 'shadow';
     }
   }
   
@@ -339,6 +382,7 @@ module.exports = {
   frontier: frontier,
   dirpath: dirpath,
   copath: copath,
+  shadow: shadow,
   leaves: leaves,
 
   test: test,
