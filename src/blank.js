@@ -19,21 +19,20 @@ function formatNode(node) {
 Object.defineProperty(Array.prototype, 'remove', {
   enumerable: false,
   value: function(val) {
-    if (!this.includes(val)) {
-      return;
+    if (this.includes(val)) {
+      this.splice(this.indexOf(val), 1);
     }
- 
-    this.splice(this.indexOf(val), 1);
   },
 });
 
-function remove(arr, val) {
-  if (!arr.includes(val)) {
-    return;
-  }
-
-  arr.splice(arr.indexOf(val), 1);
-}
+Object.defineProperty(Array.prototype, 'addUnique', {
+  enumerable: false,
+  value: function(val) {
+    if (!this.includes(val)) {
+      this.push(val);
+    }
+  },
+});
 
 class Tree {
   constructor(size) {
@@ -80,7 +79,7 @@ class Tree {
 
       recv.push(i);
       this.known[i].push(newVal);
-      remove(this.known[i], oldVal);
+      this.known[i].remove(oldVal);
     }
   }
 
@@ -180,9 +179,8 @@ class Tree {
   }
 }
 
-function newTree(size) {
-  let tree = new Tree(size);
-  for (let i = 0; i < size; i += 1) {
+function fill(tree) {
+  for (let i = 0; i < tree.size; i += 1) {
     let val = String.fromCharCode('a'.charCodeAt(0) + i);
     tree.set(i, val);
   }
@@ -190,12 +188,14 @@ function newTree(size) {
 }
 
 function testSet() {
-  let tree = newTree(7);
+  let tree = new Tree(7);
+  fill(tree);
   console.log('[set]', tree.verify());
 }
 
 function testUnset() {
-  let tree = newTree(7);
+  let tree = new Tree(7);
+  fill(tree);
 
   tree.unset(3, 'r');
   tree.unset(2, 's');
@@ -205,7 +205,8 @@ function testUnset() {
 }
 
 function testReset() {
-  let tree = newTree(7);
+  let tree = new Tree(7);
+  fill(tree);
 
   tree.unset(2, 'h');
   tree.set(0, 'i');
@@ -215,7 +216,8 @@ function testReset() {
 }
 
 function testMove() {
-  let tree = newTree(7);
+  let tree = new Tree(7);
+  fill(tree);
   
   tree.unset(3, 'r');
   tree.unset(2, 's');
@@ -229,17 +231,18 @@ function testMove() {
 }
 
 function testChaos() {
-  let rounds = 1000;
+  let rounds = 200;
   let branches = 3;
-  let size = 15;
+  let size = 63;
 
   let tree = new Tree(size);
-  let set = [...Array(size).keys()];
-  let unset = [];
-  let rand = (arr) => arr[Math.random() * arr.length];
+  let all = [...Array(size).keys()];
+  let unset = [...Array(size).keys()];
+  let set = [];
+  let rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
   let move = (val, src, dst) => {
     src.remove(val);
-    dst.push(val);
+    dst.addUnique(val);
   };
 
   let base = 'a'.charCodeAt(0);
@@ -251,7 +254,7 @@ function testChaos() {
       return true;
     }
 
-    let i = rand(unset);
+    let i = rand(all);
     tree.set(i, next());
     move(i, unset, set);
     return false;
@@ -275,20 +278,27 @@ function testChaos() {
 
     let src = rand(set);
     let dst = rand(unset);
-    tree.move(src, dst, next);
+    tree.move(src, dst, next());
     move(src, set, unset);
     move(dst, unset, set);
     return false;
   };
+
+  let start = Date.now();
+
+  // Initialize the tree about half-full
+  while (set.length / tree.size < 0.5) {
+    doSet();
+  }
 
   for (let i = 0; i < rounds; ++i) {
     let roll = Math.floor(Math.random() * branches);
     
     let reroll = true;
     switch (roll) {
-      case 0: console.log('set'); reroll = doSet(); break;
-      case 1: console.log('unset'); reroll = doUnset(); break;
-      case 2: console.log('move'); reroll = doMove(); break;
+      case 0: reroll = doSet(); break;
+      case 1: reroll = doUnset(); break;
+      case 2: reroll = doMove(); break;
     }
 
     if (!tree.verify()) {
@@ -300,18 +310,22 @@ function testChaos() {
       i--;
     }
   }
-      
-  console.log('[chaos] pass');
+
+  let finish = Date.now();
+  let elapsed = (finish - start) / 1000;
+  console.log(`[chaos] pass in ${elapsed} sec`);
 }
 
 module.exports = {
   Tree: Tree,
 
+  // node -e "require('./blank').test()"
   test: function test() {
     testSet();
     testUnset();
     testReset();
     testMove();
+    testChaos();
   },
 };
 
