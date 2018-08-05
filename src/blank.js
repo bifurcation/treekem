@@ -2,16 +2,6 @@
 
 const tm = require('./tree-math.js');
 
-let state = {
-  size: 0,
-  nodes: [],
-  known: [],
-
-  hasPriv: function(i, priv) {
-    return this.known[i].filter(x => priv.startsWith(x)).length > 0;
-  }
-}
-
 function createNode(val, i) {
   let priv = val + 'x'.repeat(i);
   return {
@@ -24,88 +14,155 @@ function formatNode(node) {
   return `(${node.priv}, ${node.pub})`;
 }
 
-module.exports = {
-  dump: function dump() {
+// Have to extend Array with a non-enumerable property so that
+// for-in / for-of loops work properly
+Object.defineProperty(Array.prototype, 'remove', {
+  enumerable: false,
+  value: function(val) {
+    if (!this.includes(val)) {
+      return;
+    }
+ 
+    this.splice(this.indexOf(val), 1);
+  },
+});
+
+function remove(arr, val) {
+  if (!arr.includes(val)) {
+    return;
+  }
+
+  arr.splice(arr.indexOf(val), 1);
+}
+
+class Tree {
+  constructor(size) {
+    this.size = size || 0;
+
+    this.nodes = [];
+    while (this.nodes.length < tm.nodeWidth(this.size)) {
+      this.nodes.push(null);
+    }
+
+    this.known = [];
+    while (this.known.length < this.size) {
+      this.known.push([]);
+    }
+  }
+
+  hasPriv(i, priv) {
+    return this.known[i].filter(x => priv.startsWith(x)).length > 0;
+  }
+
+  dump() {
     console.log("=====");
-    console.log("Size:", state.size);
+    console.log("Size:", this.size);
     console.log("Nodes:");
-    for (let i=0; i<tm.nodeWidth(state.size); ++i) {
+    for (let i=0; i<tm.nodeWidth(this.size); ++i) {
       let level = tm.level(i);
       let pad = "   ".repeat(level)
-      let contents = (state.nodes[i])? formatNode(state.nodes[i]) : "_";
+      let contents = (this.nodes[i])? formatNode(this.nodes[i]) : "_";
       console.log(`  ${pad}${contents}`); 
     }
 
     console.log("Known:");
-    for (let i=0; i<state.size; ++i) {
-      console.log(`  ${i}: ${state.known[i].join(' ')}`);
+    for (let i=0; i<this.size; ++i) {
+      console.log(`  ${i}: ${this.known[i].join(' ')}`);
     }
-  },
+  }
 
-  alloc: function alloc(size) {
-    state.size = size;
+  sendPriv(priv, newVal, oldVal) {
+    let recv = [];
+    for (let i in this.known) {
+      if (!this.hasPriv(i, priv)) {
+        continue;
+      }
 
-    while (state.nodes.length < tm.nodeWidth(size)) {
-      state.nodes.push(null);
+      recv.push(i);
+      this.known[i].push(newVal);
+      remove(this.known[i], oldVal);
+    }
+  }
+
+  send(n, newVal, oldVal) {
+    if (this.nodes[n]) {
+      this.sendPriv(this.nodes[n].priv, newVal, oldVal);
+      return;
     }
 
-    while (state.known.length < size) {
-      state.known.push([]);
+    let L = tm.left(n);
+    if (this.nodes[L]) {
+      this.send(L, newVal, oldVal);
     }
-  },
 
-  set: function set(k, val) {
-    let dirpath = tm.dirpath(2*k, state.size);
-    dirpath.push(tm.root(state.size));
+    let R = tm.right(n, this.size);
+    if (this.nodes[R]) {
+      this.send(R, newVal, oldVal);
+    }
+  }
 
-    let old = dirpath.map(n => state.nodes[n]);
+  set(k, val) {
+    let dirpath = tm.dirpath(2*k, this.size);
+    dirpath.push(tm.root(this.size));
+
+    let old = dirpath.map(n => this.nodes[n]);
 
     dirpath.map((n, i) => {
-      let node = createNode(val, i);
-      state.nodes[n] = node; 
+      this.nodes[n] = createNode(val, i); 
+      if (i == 0) {
+        return
+      }
 
-      let L = tm.left(n), R = tm.right(n, state.size);
+      let L = tm.left(n), R = tm.right(n, this.size);
       let child = (dirpath.includes(L))? R : L;
-      if (!state.nodes[child]) {
-        return;
-      }
-
-      let childPriv = state.nodes[child].priv;
+      let newPriv = this.nodes[n].priv;
       let oldPriv = (old[i])? old[i].priv : null;
-      for (let i in state.known) {
-        if (!state.hasPriv(i, childPriv)) {
-          continue;
-        }
-
-        state.known[i].push(node.priv);
-
-        let oldi = state.known[i].indexOf(oldPriv);
-        if (oldi > -1) {
-          state.known[i].splice(oldi, 1);
-        }
-      }
+      this.send(child, newPriv, oldPriv);
     });
 
-    state.known[k].push(val);
     let oldPriv = (old[0])? old[0].priv : null;
-    let oldi = state.known[k].indexOf(oldPriv);
-    if (oldi > -1) {
-      state.known[k].splice(oldi, 1);
+    if (!oldPriv) {
+      this.known[k].push(val);
+    } else {
+      this.sendPriv(oldPriv, val, oldPriv);
     }
-  },
+  }
 
-  // A nodes private key is held by a leaf iff it that leaf is in
-  // the shadow of the node
-  verify: function verify() {
-    for (let n in state.nodes) {
-      if (!state.nodes[n]) {
+  unset(k, val) {
+    let dirpath = tm.dirpath(2*k, this.size);
+    for (let n of dirpath) {
+      delete this.nodes[n];
+    }
+
+    if (val) {
+      let r = tm.root(this.size);
+      let oldPriv = this.nodes[r].priv;
+      this.nodes[r] = createNode(val, 0);
+      this.send(r, val, oldPriv);
+    }
+  }
+
+  move(src, dst, val) {
+    this.unset(src);
+    this.set(dst, val);
+  }
+
+  // A node's private key is held by a leaf iff :
+  // * the leaf is in the shadow of the node, and
+  // * the leaf is not blank
+  verify() {
+    for (let n in this.nodes) {
+      if (!this.nodes[n]) {
         continue;
       }
 
       n = parseInt(n);
-      let priv = state.nodes[n].priv;
-      let shadow = tm.shadow(n, state.size).filter(x => !(x & 1)).map(x => x/2);
-      let hasPriv = [...Array(state.size).keys()].filter(i => state.hasPriv(i, priv));
+      let priv = this.nodes[n].priv;
+      let shadow = tm.shadow(n, this.size)
+                     .filter(x => !(x & 1))
+                     .filter(x => !!this.nodes[x])
+                     .map(x => x/2);
+      let hasPriv = [...Array(this.size).keys()].filter(i => this.hasPriv(i, priv));
 
       let shadowSet = {};
       for (let x of shadow) {
@@ -113,21 +170,148 @@ module.exports = {
       }
       for (let x of hasPriv) {
         if (!shadowSet[x]) {
+          console.log(priv, ':', shadow, '!=', hasPriv);
           return false;
         }
       }
     }
     
     return true;
-  },
+  }
+}
+
+function newTree(size) {
+  let tree = new Tree(size);
+  for (let i = 0; i < size; i += 1) {
+    let val = String.fromCharCode('a'.charCodeAt(0) + i);
+    tree.set(i, val);
+  }
+  return tree;
+}
+
+function testSet() {
+  let tree = newTree(7);
+  console.log('[set]', tree.verify());
+}
+
+function testUnset() {
+  let tree = newTree(7);
+
+  tree.unset(3, 'r');
+  tree.unset(2, 's');
+  tree.unset(1, 't');
+  
+  console.log('[unset]', tree.verify());
+}
+
+function testReset() {
+  let tree = newTree(7);
+
+  tree.unset(2, 'h');
+  tree.set(0, 'i');
+  tree.set(6, 'j');
+  
+  console.log('[reset]', tree.verify());
+}
+
+function testMove() {
+  let tree = newTree(7);
+  
+  tree.unset(3, 'r');
+  tree.unset(2, 's');
+  tree.unset(1, 't');
+
+  tree.move(4, 1, 'h');
+  tree.move(5, 2, 'i');
+  tree.move(6, 3, 'j'); 
+  
+  console.log('[move]', tree.verify());
+}
+
+function testChaos() {
+  let rounds = 1000;
+  let branches = 3;
+  let size = 15;
+
+  let tree = new Tree(size);
+  let set = [...Array(size).keys()];
+  let unset = [];
+  let rand = (arr) => arr[Math.random() * arr.length];
+  let move = (val, src, dst) => {
+    src.remove(val);
+    dst.push(val);
+  };
+
+  let base = 'a'.charCodeAt(0);
+  let val = 0;
+  let next = () => String.fromCharCode(base + val++);
+
+  let doSet = () => {
+    if (unset.length == 0) {
+      return true;
+    }
+
+    let i = rand(unset);
+    tree.set(i, next());
+    move(i, unset, set);
+    return false;
+  };
+
+  let doUnset = () => {
+    if (set.length == 0) {
+      return true;
+    }
+
+    let i = rand(set);
+    tree.unset(i, next());
+    move(i, set, unset);
+    return false;
+  };
+
+  let doMove = () => {
+    if (set.length == 0 || unset.length == 0) {
+      return true;
+    }
+
+    let src = rand(set);
+    let dst = rand(unset);
+    tree.move(src, dst, next);
+    move(src, set, unset);
+    move(dst, unset, set);
+    return false;
+  };
+
+  for (let i = 0; i < rounds; ++i) {
+    let roll = Math.floor(Math.random() * branches);
+    
+    let reroll = true;
+    switch (roll) {
+      case 0: console.log('set'); reroll = doSet(); break;
+      case 1: console.log('unset'); reroll = doUnset(); break;
+      case 2: console.log('move'); reroll = doMove(); break;
+    }
+
+    if (!tree.verify()) {
+      console.log('[chaos] fail');
+      return;
+    }
+
+    if (reroll) {
+      i--;
+    }
+  }
+      
+  console.log('[chaos] pass');
+}
+
+module.exports = {
+  Tree: Tree,
 
   test: function test() {
-    this.alloc(7);
-    this.set(0, 'a');
-    this.set(1, 'b');
-    this.set(2, 'c');
-    this.dump();
-    console.log(this.verify());
+    testSet();
+    testUnset();
+    testReset();
+    testMove();
   },
 };
 
