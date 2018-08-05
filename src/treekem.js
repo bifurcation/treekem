@@ -77,6 +77,27 @@ class TreeKEM {
     return tkem;
   }
 
+  async encryptToSubtree(node, value) {
+    let out = {};
+
+    if (this.nodes[node]) {
+      out[node] = await ECKEM.encrypt(value, this.nodes[node].public);
+      return out;
+    }
+
+    let left = tm.left(node);
+    if (left != node) {
+      Object.assign(out, await this.encryptToSubtree(left, value));
+    }
+    
+    let right = tm.right(node, this.size);
+    if (right != node) {
+      Object.assign(out, await this.encryptToSubtree(right, value));
+    }
+
+    return out;
+  }
+
   /*
    * Encrypt a fresh root value in a way that all participants in
    * the group can decrypt (except for the current node).
@@ -114,7 +135,7 @@ class TreeKEM {
     let ciphertexts = await Promise.all(copath.map(async (c, i) => {
       let p = tm.parent(c, this.size);
       let s = privateNodes[p].secret;
-      return ECKEM.encrypt(s, this.nodes[c].public);
+      return this.encryptToSubtree(c, s);
     }));
 
     return {
@@ -152,7 +173,13 @@ class TreeKEM {
     let overlap = dirpath.filter(x => copath.includes(x))[0];
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
-    let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
+    let encryptions = ciphertexts[coIndex];
+
+    // Extract an encrypted value that we can decrypt, and decrypt it
+    let decNode = Object.keys(encryptions)
+                        .map(x => parseInt(x))
+                        .filter(x => dirpath.includes(x))[0];
+    let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
 
     // Hash up to the root (plus one if we're growing the tree)
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
