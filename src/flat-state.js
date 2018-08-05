@@ -60,7 +60,10 @@ class FlatState {
     };
   }
   
-  remove(index) {/* TODO */}
+  async remove(index) {
+    /* TODO */
+    return {};
+  }
 
   get groupInitKey() {
     let publicNodes = {};
@@ -92,7 +95,9 @@ class FlatState {
     this.nodes[2 * update.from].public = update.public;
   }
   
-  handleRemove(remove) {/* TODO */}
+  async handleRemove(remove) {
+    /* TODO */
+  }
 }
 
 module.exports = FlatState;

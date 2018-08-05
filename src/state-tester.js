@@ -178,11 +178,83 @@ async function testUpdate(State, transcode) {
   console.log(`[${label}] PASS`);
 }
 
+async function testRemove(State) {
+  // Create a group via GroupAdds
+  const testGroupSize = 5;
+  let creator = await State.oneMemberGroup(base64.random(32));
+  let members = [creator];
+  for (let i = 1; i < testGroupSize; ++i) {
+    let initLeaf = base64.random(32);
+    let initKP = await iota(initLeaf);
+    let ga = await members[members.length - 1].add(initKP.publicKey)
+
+    for (let m of members) {
+      await m.handleGroupAdd(ga);
+    }
+
+    let joiner = await State.fromGroupAdd(initLeaf, ga);
+    members.push(joiner);
+  }
+
+  // Have the first member remove two members
+  let remover = members[0];
+  let removed = [2, 3];
+  for (let index of removed) {
+    let leaf = base64.random(32);
+    let removeIn = await remover.remove(leaf, index);
+    let removeEnc = JSON.stringify(removeIn);
+    let remove = JSON.parse(removeEnc);
+
+    members = members.filter(x => x.index != index);
+
+    for (let m of members) {
+      await m.handleRemove(remove);
+    }
+
+    for (let m of members) {
+      let eq = await groupEqual(m, remover);
+      if (!eq) {
+        await groupDump(remover.index, remover);
+        await groupDump(m.index, m);
+        throw 'state-remove';
+      }
+    }
+  }
+
+  // Have each remaining member update and verify that others are consistent
+  for (let m1 of members) {
+    let leaf = base64.random(32);
+    let updateIn = await m1.update(leaf);
+    let updateEnc = JSON.stringify(updateIn);
+    let update = JSON.parse(updateEnc);
+
+    await m1.handleSelfUpdate(update, leaf);
+
+    for (let m2 of members) {
+      if (m2.index == m1.index) {
+        continue
+      }
+        
+      await m2.handleUpdate(update);
+
+      let eq = await groupEqual(m1, m2);
+      if (!eq) {
+        await groupDump(m1.index, m1);
+        await groupDump(m2.index, m2);
+        throw 'state-remove';
+      }
+    }
+  }
+  
+  console.log('[state-remove] PASS');
+}
+
 module.exports = {
   test: async function(State) {
     await testUserAdd(State);
     await testGroupAdd(State);
     await testUpdate(State, false);
     await testUpdate(State, true);
+    await testRemove(State);
   },
 };

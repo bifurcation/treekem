@@ -100,10 +100,11 @@ class TreeKEM {
 
   /*
    * Encrypt a fresh root value in a way that all participants in
-   * the group can decrypt (except for the current node).
+   * the group can decrypt, except for an excluded node.
    *
    * Arguments:
    *   * leaf - BufferSource with leaf secret
+   *   * except - index of the node to exclude
    *
    * Returns: Promise resolving to a TreeKEMCiphertext object:
    *   {
@@ -120,12 +121,12 @@ class TreeKEM {
    *     ciphertexts: [ ECKEMCiphertext ]
    *   }
    */
-  async encrypt(leaf) {
-    let dirpath = tm.dirpath(2 * this.index, this.size);
-    let copath = tm.copath(2 * this.index, this.size);
+  async encrypt(leaf, except) {
+    let dirpath = tm.dirpath(2 * except, this.size);
+    let copath = tm.copath(2 * except, this.size);
 
     // Generate hashes up the tree
-    let privateNodes = await TreeKEM.hashUp(2 * this.index, this.size, leaf);
+    let privateNodes = await TreeKEM.hashUp(2 * except, this.size, leaf);
     let nodes = {};
     for (let n in privateNodes) {
       nodes[n] = util.publicNode(privateNodes[n]);
@@ -182,13 +183,31 @@ class TreeKEM {
     let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
 
     // Hash up to the root (plus one if we're growing the tree)
+    let rootNode = tm.root(senderSize);
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
-    newDirpath.push(tm.root(senderSize));
+    newDirpath.push(rootNode);
     let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
 
-    let root = tm.root(senderSize);
+    let root = {}
+    root[rootNode] = nodes[root];
+
     return {
+      root: root,
       nodes: nodes,
+    }
+  }
+
+  /* 
+   * Remove a node from the tree, including its direct path
+   *
+   * Arguments:
+   *   index - Index of the node to remove
+   *
+   * Returns: None
+   */
+  remove(index) {
+    for (let n of tm.dirpath(2 * index, this.size)) {
+      delete this.nodes[n];
     }
   }
 
@@ -196,7 +215,7 @@ class TreeKEM {
    * Updates nodes in the tree.
    *
    * Arguments:
-   *   nodes - Dictionary of nodes to udpate: { Int: Node }
+   *   nodes - Dictionary of nodes to update: { Int: Node }
    *
    * Returns: None
    */
