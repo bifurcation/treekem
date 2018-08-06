@@ -77,25 +77,56 @@ class TreeKEM {
     return tkem;
   }
 
-  async encryptToSubtree(node, value) {
+  /* 
+   * Map a function over the populated subtree heads beneath an
+   * intermediate node.  Results are collated in an object whose
+   * keys are the indices of the relevant tree nodes.
+   *
+   * Inputs:
+   *  * node - Head of the subtree
+   *  * func - func(nodeID) -> T
+   *
+   * Returns:
+   *  * {Node: T}
+   */
+  async mapSubtree(node, func) {
     let out = {};
 
     if (this.nodes[node]) {
-      out[node] = await ECKEM.encrypt(value, this.nodes[node].public);
+      out[node] = await func(node);
       return out;
     }
 
     let left = tm.left(node);
     if (left != node) {
-      Object.assign(out, await this.encryptToSubtree(left, value));
+      Object.assign(out, await this.mapSubtree(left, func));
     }
     
     let right = tm.right(node, this.size);
     if (right != node) {
-      Object.assign(out, await this.encryptToSubtree(right, value));
+      Object.assign(out, await this.mapSubtree(right, func));
     }
 
     return out;
+  }
+
+  /*
+   * Encrypt a value so that it can be decrypted by all nodes in the
+   * subtree with the indicated head, even if some leaves are
+   * excluded.
+   */
+  async encryptToSubtree(head, value) {
+    return this.mapSubtree(head, async node => {
+      return await ECKEM.encrypt(value, this.nodes[node].public);
+    });
+  }
+
+  /*
+   * Gather the heads of the populated subtrees below the specified
+   * subtree head
+   */
+  async gatherSubtree(head) {
+    return await this.mapSubtree(head, node => util.publicNode(this.nodes[node]));
   }
 
   /*
@@ -139,9 +170,18 @@ class TreeKEM {
       return this.encryptToSubtree(c, s);
     }));
 
+    // Gather subtree heads 
+    // NB: This is not necessary if other members have built a copy
+    // of the tree.  Unlike `nodes`, it's not new.
+    let subtreeHeads = await Promise.all(copath.map(async n => {
+      return await this.gatherSubtree(n);
+    }));
+    subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b));
+
     return {
       nodes: nodes,
       ciphertexts: ciphertexts,
+      subtreeHeads: subtreeHeads,
     };
   }
 
@@ -162,35 +202,42 @@ class TreeKEM {
    *   }
    */
   async decrypt(index, ciphertexts) {
+    console.log('>>> decrypt', index, ciphertexts);
     // These are the nodes that the sender encrypted to
     let senderSize = (index == this.size)? this.size + 1 : this.size;
     let copath = tm.copath(2 * index, senderSize);
+    console.log('--- decrypt');
 
     // These are the nodes that we should have private keys for
     let dirpath = tm.dirpath(2 * this.index, this.size);
     dirpath.push(tm.root(this.size));
+    console.log('--- decrypt');
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
     let encryptions = ciphertexts[coIndex];
+    console.log('--- decrypt');
 
     // Extract an encrypted value that we can decrypt, and decrypt it
     let decNode = Object.keys(encryptions)
                         .map(x => parseInt(x))
                         .filter(x => dirpath.includes(x))[0];
     let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
+    console.log('--- decrypt');
 
     // Hash up to the root (plus one if we're growing the tree)
     let rootNode = tm.root(senderSize);
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
     newDirpath.push(rootNode);
     let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
+    console.log('--- decrypt');
 
     let root = {}
     root[rootNode] = nodes[root];
 
+    console.log('<<< decrypt');
     return {
       root: root,
       nodes: nodes,
@@ -216,11 +263,16 @@ class TreeKEM {
    *
    * Arguments:
    *   nodes - Dictionary of nodes to update: { Int: Node }
+   *   preserve - Whether existing nodes should be left alone
    *
    * Returns: None
    */
-  merge(nodes) {
+  merge(nodes, preserve) {
     for (let n in nodes) {
+      if (this.nodes[n] && preserve) {
+        continue;
+      }
+    
       this.nodes[n] = nodes[n];
     }
   }

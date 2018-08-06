@@ -67,7 +67,7 @@ function addMember(m) {
 
   // Add a tree
   let index = m.index;
-  let divID = "tree" + index;
+  let divID = `tree-${index}`;
   let tag = $(`<div class="number">${index}</div>`);
   let div = $(`<div id="${divID}" class="tree"></div>`);
   div.append(tag);
@@ -79,10 +79,32 @@ function addMember(m) {
   renderers.push(r);
 
   // Add an update button
-  let buttonID = "update" + index;
-  let button = $(`<button class="update">Update(${index})</button>`);
-  button.click(lockWrap(() => { return update(index); }));
-  $("#buttons").append(button);
+  let ubutton = $(`<button class="update">Update(${index})</button>`);
+  ubutton.attr("id", `btn-update-${index}`);
+  ubutton.click(lockWrap(() => { return update(index); }));
+  $("#buttons").append(ubutton);
+
+  // Add a delete button
+  if (index != 0) {
+    let rbutton = $(`<button class="remove">Remove(${index})</button>`);
+    rbutton.attr("id", `btn-remove-${index}`);
+    rbutton.click(lockWrap(() => { return remove(index); }));
+    $("#buttons").append(rbutton);
+  }
+
+  // Add padding
+  $("#buttons").append(document.createTextNode(' '));
+}
+
+function removeMember(index) {
+  members = members.filter(m => m.index != index);
+
+  delete renderers[index];
+
+  // Remove the associated DOM elements
+  $(`#tree-${index}`).remove();
+  $(`#btn-update-${index}`).remove();
+  $(`#btn-remove-${index}`).remove();
 }
 
 async function userAdd() {
@@ -118,7 +140,8 @@ async function groupAdd() {
 
 async function update(k) {
   let leaf = base64.random(32);
-  let update = await members[k].update(leaf);
+  let member = members.filter(m => m.index == k)[0];
+  let update = await member.update(leaf);
   
   for (m2 of members) {
     if (m2.index == k) {
@@ -128,6 +151,22 @@ async function update(k) {
     }
     renderers[m2.index].render(m2.size, m2.nodes);
   }
+}
+
+async function remove(k) {
+  let leaf = base64.random(32);
+  let remove = await members[0].remove(leaf, k);
+
+  for (m2 of members) {
+    if (m2.index == k) {
+      continue;
+    }
+
+    await m2.handleRemove(remove);
+    renderers[m2.index].render(m2.size, m2.nodes);
+  }
+
+  removeMember(k);
 }
 
 $(document).ready(async () => {
