@@ -155,7 +155,10 @@ async function update(k) {
 
 async function remove(k) {
   let leaf = base64.random(32);
-  let remove = await members[0].remove(leaf, k);
+  let candidates = members.filter(m => m.index != k);
+  let remover = candidates[Math.floor(Math.random() * candidates.length)];
+  let removed = members.filter(m => m.index == k)[0];
+  let remove = await remover.remove(leaf, k, removed.copath);
 
   for (m2 of members) {
     if (m2.index == k) {

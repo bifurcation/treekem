@@ -283,6 +283,16 @@ class TreeKEM {
              .reduce((a, b) => Object.assign(a, b), {});
   }
 
+  /* 
+   * Returns the nodes on the copath for this node { Int: Node },
+   * including subtree heads if the tree is incomplete.
+   */
+  get copath() {
+    return tm.copath(2 * this.index, this.size)
+             .map(n => this.gatherSubtree(n))
+             .reduce((a, b) => Object.assign(a, b), {});
+  }
+
   /*
    * Two instances are equal if they agree on the nodes where they
    * overlap.

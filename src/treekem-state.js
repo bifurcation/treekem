@@ -19,6 +19,10 @@ class TreeKEMState {
     return this.tkem.nodes;
   }
 
+  get copath() {
+    return this.tkem.copath;
+  }
+
   async equal(other) {
     return this.tkem.equal(other.tkem);
   }
@@ -88,7 +92,8 @@ class TreeKEMState {
     }
   }
   
-  async remove(leaf, index) {
+  async remove(leaf, index, copath) {
+    this.tkem.merge(copath, true);
     let ct = await this.tkem.encrypt(leaf, index);
     return {
       index: index,
