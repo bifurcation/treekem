@@ -25,7 +25,14 @@ function xor(a, b) {
 
 async function hash(x64) {
   const x = base64.parse(x64);
-  const d = await cs.digest("SHA-256", x);
+  const alg = {
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: Buffer.from("tree-hash"),
+    info: Buffer.alloc(0)
+  };
+  const xkey = await cs.importKey("raw", x, alg, false, ["deriveBits"]);
+  const d = await cs.deriveBits(alg, xkey, 256);
   return base64.stringify(d);
 }
 
