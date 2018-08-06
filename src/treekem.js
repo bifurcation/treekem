@@ -89,22 +89,22 @@ class TreeKEM {
    * Returns:
    *  * {Node: T}
    */
-  async mapSubtree(node, func) {
+  mapSubtree(node, func) {
     let out = {};
 
     if (this.nodes[node]) {
-      out[node] = await func(node);
+      out[node] = func(node);
       return out;
     }
 
     let left = tm.left(node);
     if (left != node) {
-      Object.assign(out, await this.mapSubtree(left, func));
+      Object.assign(out, this.mapSubtree(left, func));
     }
     
     let right = tm.right(node, this.size);
     if (right != node) {
-      Object.assign(out, await this.mapSubtree(right, func));
+      Object.assign(out, this.mapSubtree(right, func));
     }
 
     return out;
@@ -116,17 +116,22 @@ class TreeKEM {
    * excluded.
    */
   async encryptToSubtree(head, value) {
-    return this.mapSubtree(head, async node => {
+    let encryptions = this.mapSubtree(head, async node => {
       return await ECKEM.encrypt(value, this.nodes[node].public);
     });
+
+    for (let n in encryptions) {
+      encryptions[n] = await encryptions[n];
+    }
+    return encryptions;
   }
 
   /*
    * Gather the heads of the populated subtrees below the specified
    * subtree head
    */
-  async gatherSubtree(head) {
-    return await this.mapSubtree(head, node => util.publicNode(this.nodes[node]));
+  gatherSubtree(head) {
+    return this.mapSubtree(head, node => util.publicNode(this.nodes[node]));
   }
 
   /*
@@ -173,9 +178,7 @@ class TreeKEM {
     // Gather subtree heads 
     // NB: This is not necessary if other members have built a copy
     // of the tree.  Unlike `nodes`, it's not new.
-    let subtreeHeads = await Promise.all(copath.map(async n => {
-      return await this.gatherSubtree(n);
-    }));
+    let subtreeHeads = copath.map(n => this.gatherSubtree(n));
     subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b));
 
     return {
@@ -202,42 +205,35 @@ class TreeKEM {
    *   }
    */
   async decrypt(index, ciphertexts) {
-    console.log('>>> decrypt', index, ciphertexts);
     // These are the nodes that the sender encrypted to
     let senderSize = (index == this.size)? this.size + 1 : this.size;
     let copath = tm.copath(2 * index, senderSize);
-    console.log('--- decrypt');
 
     // These are the nodes that we should have private keys for
     let dirpath = tm.dirpath(2 * this.index, this.size);
     dirpath.push(tm.root(this.size));
-    console.log('--- decrypt');
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
     let encryptions = ciphertexts[coIndex];
-    console.log('--- decrypt');
 
     // Extract an encrypted value that we can decrypt, and decrypt it
     let decNode = Object.keys(encryptions)
                         .map(x => parseInt(x))
                         .filter(x => dirpath.includes(x))[0];
     let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
-    console.log('--- decrypt');
 
     // Hash up to the root (plus one if we're growing the tree)
     let rootNode = tm.root(senderSize);
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
     newDirpath.push(rootNode);
     let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
-    console.log('--- decrypt');
 
     let root = {}
     root[rootNode] = nodes[root];
 
-    console.log('<<< decrypt');
     return {
       root: root,
       nodes: nodes,
@@ -278,10 +274,16 @@ class TreeKEM {
   }
 
   /*
-   * Returns the nodes on the frontier of the tree { Int: Node }
+   * Returns the nodes on the frontier of the tree { Int: Node },
+   * including subtree heads if the tree is incomplete.
    */
   frontier() {
-    return util.nodePath(this.nodes, tm.frontier(this.size));
+    let f = tm.frontier(this.size)
+              .map(n => this.gatherSubtree(n))
+              .reduce((a, b) => Object.assign(a, b));
+
+    console.log("frontier:", JSON.stringify(f));
+    return f;
   }
 
   /*

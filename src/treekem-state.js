@@ -130,15 +130,10 @@ class TreeKEMState {
   }
   
   async handleRemove(remove) {
-    console.log(">>> remove", this.index, remove);
     let pt = await this.tkem.decrypt(remove.index, remove.ciphertexts);
-    console.log('--- remove');
     this.tkem.merge(pt.root);
-    console.log('--- remove');
     this.tkem.merge(remove.subtreeHeads, true);
-    console.log('--- remove');
     this.tkem.remove(remove.index);
-    console.log('<<< remove');
   }
 }
 

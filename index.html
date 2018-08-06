@@ -110,7 +110,7 @@ function removeMember(index) {
 async function userAdd() {
   let last = members[members.length - 1];
   let leaf = base64.random(32);
-  let gik = last.groupInitKey
+  let gik = last.groupInitKey;
   let ua = await StateType.join(leaf, gik);
 
   for (let m of members) {
