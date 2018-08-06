@@ -29,14 +29,12 @@ let stateTypeLegends = {
 
 let StateType = FlatState;
 let members = [];
-let renderers = [];
+let renderers = {};
 let treeCache = new Tree();
 
 async function init() {
   $("div.tree").remove();
   $("button.update").remove();
-  members = [];
-  renderers = [];
 
   let leaf = base64.random(32);
   let creator = await StateType.oneMemberGroup(leaf);
@@ -55,17 +53,23 @@ function selectStateType(label) {
   return init();
 }
 
+let operationLock = false;
+
 function lockWrap(action) {
   return () => {
+    operationLock = true;
     $("button").prop("disabled", true);
+    $("#chaos").prop("disabled", false);
     action()
       .then(() => {
+        operationLock = false;
         $("button").prop("disabled", false);
       });
   };
 }
 
 function addMember(m) {
+  m.id = Symbol(m.index);
   members.push(m);
 
   // Add a tree
@@ -79,7 +83,7 @@ function addMember(m) {
   // Render
   let r = new Renderer(divID);
   r.render(m.size, m.nodes);
-  renderers.push(r);
+  renderers[m.id] = r;
 
   // Add an update button
   let ubutton = $(`<button class="update">Update(${index})</button>`);
@@ -107,9 +111,10 @@ function addMember(m) {
 }
 
 function removeMember(index) {
+  removed = members.filter(m => m.index == index)[0];
   members = members.filter(m => m.index != index);
 
-  delete renderers[index];
+  delete renderers[removed.id];
 
   // Remove the associated DOM elements
   $(`#tree-${index}`).remove();
@@ -124,8 +129,6 @@ function removeMember(index) {
 }
 
 function moveMember(index, newIndex) {
-  renderers[newIndex] = renderers[index];
-
   // Renumber the associated DOM elements
   $(`#tree-${index}`).attr('id', `tree-${newIndex}`);
   $(`#btn-update-${index}`).attr('id', `btn-update-${newIndex}`);
@@ -167,7 +170,7 @@ async function userAdd() {
 
   for (let m of members) {
     await m.handleUserAdd(ua);
-    renderers[m.index].render(m.size, m.nodes);
+    renderers[m.id].render(m.size, m.nodes);
   }
 
   treeCache.size += 1;
@@ -186,7 +189,7 @@ async function groupAdd() {
  
   for (let m of members) {
     await m.handleGroupAdd(ga);
-    renderers[m.index].render(m.size, m.nodes);
+    renderers[m.id].render(m.size, m.nodes);
   }
 
   treeCache.size += 1;
@@ -207,7 +210,7 @@ async function update(k) {
     } else {
       await m2.handleUpdate(update);
     }
-    renderers[m2.index].render(m2.size, m2.nodes);
+    renderers[m2.id].render(m2.size, m2.nodes);
   }
   
   treeCache.merge(update.nodes);
@@ -216,9 +219,19 @@ async function update(k) {
 async function remove(k) {
   let leaf = base64.random(32);
   let candidates = members.filter(m => m.index != k);
+  if (candidates.length == 0) {
+    console.log("Cannot remove last member");
+    return;
+  }
+
   let remover = candidates[Math.floor(Math.random() * candidates.length)];
   let removed = members.filter(m => m.index == k)[0];
   let remove = await remover.remove(leaf, k, removed.copath);
+
+  let newSize = members.map(m => m.index)
+                       .filter(i => i != k)
+                       .reduce((a, b) => (a > b)? a : b, -Infinity);
+  newSize += 1;
 
   for (let m2 of members) {
     if (m2.index == k) {
@@ -226,7 +239,8 @@ async function remove(k) {
     }
 
     await m2.handleRemove(remove);
-    renderers[m2.index].render(m2.size, m2.nodes);
+    m2.trim(newSize);
+    renderers[m2.id].render(m2.size, m2.nodes);
   }
   
   treeCache.remove(k);
@@ -246,15 +260,11 @@ async function moveToLowestVacant(k) {
   let mover = members.filter(m => m.index == k)[0];
   let move = await mover.move(leaf, minVacant, copath);
 
-  console.log("members", members);
-  console.log("move", move);
   for (let m2 of members) {
     if (m2.index == k) {
       await m2.handleSelfMove(move, leaf);
-      renderers[k].render(m2.size, m2.nodes);
     } else {
       await m2.handleMove(move);
-      renderers[m2.index].render(m2.size, m2.nodes);
     }
   }
 
@@ -262,23 +272,34 @@ async function moveToLowestVacant(k) {
   treeCache.merge(move.nodes);
 
   moveMember(k, minVacant);
+
+  let newSize = highestOccupied() + 1;
+  for (let m2 of members) {
+    m2.trim(newSize);
+    renderers[m2.id].render(m2.size, m2.nodes);
+  }
 }
 
 let chaosEnabled = false;
+let chaosCount = 0;
 const chaosOnLabel = "&#x1F608;"; // U+1F608 SMILING FACE WITH HORNS
 const chaosOffLabel = "&#x1F610";   // U+1F610 NEUTRAL FACE
 const chaosDistribution = {
   "add": 0.3,
-  "update": 0.6,
+  "update": 0.5,
+  "move": 0.1,
   "remove": 0.1,
 }
 
 async function startChaos() {
-  console.log("starting chaos");
-  const chaosInterval = 750;
+  const chaosInterval = 1000;
   const sleep = () => new Promise(res => { setTimeout(res, chaosInterval); });
 
   while (chaosEnabled) {
+    while (operationLock) {
+      await sleep();
+    }
+
     // Pick a random button class
     let dice = Math.random();
     let target;
@@ -298,8 +319,7 @@ async function startChaos() {
     }
 
     let pick = Math.floor(Math.random() * buttons.length);
-    console.log("chaos", target, buttons, pick);
-    console.log("chaos clicking:", buttons[pick].innerText);
+    console.log(`chaos click (${chaosCount++}):`, buttons[pick].innerText);
     buttons[pick].click();
     await sleep();
   }

@@ -175,16 +175,9 @@ class TreeKEM {
       return this.encryptToSubtree(c, s);
     }));
 
-    // Gather subtree heads 
-    // NB: This is not necessary if other members have built a copy
-    // of the tree.  Unlike `nodes`, it's not new.
-    let subtreeHeads = copath.map(n => this.gatherSubtree(n));
-    subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b), {});
-
     return {
       nodes: nodes,
       ciphertexts: ciphertexts,
-      subtreeHeads: subtreeHeads,
     };
   }
 
@@ -223,6 +216,7 @@ class TreeKEM {
     let decNode = Object.keys(encryptions)
                         .map(x => parseInt(x))
                         .filter(x => dirpath.includes(x))[0];
+
     let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
 
     // Hash up to the root (plus one if we're growing the tree)
@@ -238,6 +232,24 @@ class TreeKEM {
       root: root,
       nodes: nodes,
     }
+  }
+
+  /*
+   * Removes unnecessary nodes from the tree when the size of the
+   * group shrinks.
+   */
+  trim(size) {
+    if (size > this.size) {
+      throw "Cannot trim upwards";
+    }
+
+    let width = tm.nodeWidth(size);
+    Object.keys(this.nodes)
+          .map(n => parseInt(n))
+          .filter(n => n > width)
+          .map(n => delete this.nodes[n]);
+
+    this.size = size;
   }
 
   /* 
@@ -287,8 +299,8 @@ class TreeKEM {
    * Returns the nodes on the copath for this node { Int: Node },
    * including subtree heads if the tree is incomplete.
    */
-  get copath() {
-    return tm.copath(2 * this.index, this.size)
+  copath(index) {
+    return tm.copath(2 * index, this.size)
              .map(n => this.gatherSubtree(n))
              .reduce((a, b) => Object.assign(a, b), {});
   }
