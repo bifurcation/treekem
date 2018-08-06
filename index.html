@@ -169,6 +169,47 @@ async function remove(k) {
   removeMember(k);
 }
 
+let chaosEnabled = false;
+const chaosOnLabel = "&#x1F608;"; // U+1F608 SMILING FACE WITH HORNS
+const chaosOffLabel = "&#x1F610";   // U+1F610 NEUTRAL FACE
+const chaosDistribution = {
+  "add": 0.3,
+  "update": 0.6,
+  "remove": 0.1,
+}
+
+async function startChaos() {
+  console.log("starting chaos");
+  const chaosInterval = 750;
+  const sleep = () => new Promise(res => { setTimeout(res, chaosInterval); });
+
+  while (chaosEnabled) {
+    // Pick a random button class
+    let dice = Math.random();
+    let target;
+    let cdf = 0;
+    for (let key in chaosDistribution) {
+      cdf += chaosDistribution[key];
+      if (dice < cdf) {
+        target = key;
+        break;
+      }
+    }
+
+    // Click a random button of that class
+    let buttons = $(`#buttons button.${target}`);
+    if (buttons.length == 0) {
+      continue;
+    }
+
+    let pick = Math.floor(Math.random() * buttons.length);
+    console.log("chaos", target, buttons, pick);
+    console.log("chaos clicking:", buttons[pick].innerText);
+    buttons[pick].click();
+    await sleep();
+  }
+}
+
 $(document).ready(async () => {
   for (let label in stateTypes) {
     let id = "stateType-" + label;
@@ -179,6 +220,16 @@ $(document).ready(async () => {
 
   $("#userAdd").click(lockWrap(userAdd));
   $("#groupAdd").click(lockWrap(groupAdd));
+
+  $("#chaos").html(chaosOffLabel);
+  $("#chaos").click(() => {
+    $("#chaos").html((chaosEnabled)? chaosOffLabel : chaosOnLabel);
+    chaosEnabled = !chaosEnabled;
+    
+    if (chaosEnabled) {
+      startChaos();
+    }
+  });
   
   selectStateType("TreeKEM");
 });
@@ -247,8 +298,9 @@ div.tree svg {
   <div id="github"><a href="https://github.com/bifurcation/treekem">GitHub</a></div>
   <div id="stateTypes"></div>
   <div id="buttons">
-    <button id="userAdd">UserAdd</button>
-    <button id="groupAdd">GroupAdd</button>
+    <button id="chaos"></button>
+    <button id="userAdd" class="add">UserAdd</button>
+    <button id="groupAdd" class="add">GroupAdd</button>
   </div>
   <div class="legend">
     Filled boxes are nodes with private keys.

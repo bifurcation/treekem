@@ -179,7 +179,7 @@ class TreeKEM {
     // NB: This is not necessary if other members have built a copy
     // of the tree.  Unlike `nodes`, it's not new.
     let subtreeHeads = copath.map(n => this.gatherSubtree(n));
-    subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b));
+    subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b), {});
 
     return {
       nodes: nodes,
@@ -278,12 +278,9 @@ class TreeKEM {
    * including subtree heads if the tree is incomplete.
    */
   frontier() {
-    let f = tm.frontier(this.size)
-              .map(n => this.gatherSubtree(n))
-              .reduce((a, b) => Object.assign(a, b));
-
-    console.log("frontier:", JSON.stringify(f));
-    return f;
+    return tm.frontier(this.size)
+             .map(n => this.gatherSubtree(n))
+             .reduce((a, b) => Object.assign(a, b), {});
   }
 
   /*
