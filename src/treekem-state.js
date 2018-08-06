@@ -55,7 +55,7 @@ class TreeKEMState {
 
   static async join(leaf, groupInitKey) {
     let tkem = await TreeKEM.fromFrontier(groupInitKey.size, groupInitKey.frontier, leaf);
-    let ct = await tkem.encrypt(leaf)
+    let ct = await tkem.encrypt(leaf, tkem.index)
     return {
       ciphertexts: ct.ciphertexts,
       nodes: ct.nodes,
@@ -80,7 +80,7 @@ class TreeKEMState {
   }
 
   async update(leaf) {
-    let ct = await this.tkem.encrypt(leaf);
+    let ct = await this.tkem.encrypt(leaf, this.tkem.index);
     return {
       from: this.tkem.index,
       ciphertexts: ct.ciphertexts,
@@ -88,7 +88,14 @@ class TreeKEMState {
     }
   }
   
-  remove(index) {/* TODO */}
+  async remove(leaf, index) {
+    let ct = await this.tkem.encrypt(leaf, index);
+    return {
+      index: index,
+      ciphertexts: ct.ciphertexts,
+      subtreeHeads: ct.subtreeHeads,
+    };
+  }
 
   get groupInitKey() {
     return {
@@ -122,7 +129,17 @@ class TreeKEMState {
     this.tkem.merge(pt.nodes);
   }
   
-  handleRemove(remove) {/* TODO */}
+  async handleRemove(remove) {
+    console.log(">>> remove", this.index, remove);
+    let pt = await this.tkem.decrypt(remove.index, remove.ciphertexts);
+    console.log('--- remove');
+    this.tkem.merge(pt.root);
+    console.log('--- remove');
+    this.tkem.merge(remove.subtreeHeads, true);
+    console.log('--- remove');
+    this.tkem.remove(remove.index);
+    console.log('<<< remove');
+  }
 }
 
 module.exports = TreeKEMState;

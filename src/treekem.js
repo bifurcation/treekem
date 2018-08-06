@@ -77,12 +77,65 @@ class TreeKEM {
     return tkem;
   }
 
+  /* 
+   * Map a function over the populated subtree heads beneath an
+   * intermediate node.  Results are collated in an object whose
+   * keys are the indices of the relevant tree nodes.
+   *
+   * Inputs:
+   *  * node - Head of the subtree
+   *  * func - func(nodeID) -> T
+   *
+   * Returns:
+   *  * {Node: T}
+   */
+  async mapSubtree(node, func) {
+    let out = {};
+
+    if (this.nodes[node]) {
+      out[node] = await func(node);
+      return out;
+    }
+
+    let left = tm.left(node);
+    if (left != node) {
+      Object.assign(out, await this.mapSubtree(left, func));
+    }
+    
+    let right = tm.right(node, this.size);
+    if (right != node) {
+      Object.assign(out, await this.mapSubtree(right, func));
+    }
+
+    return out;
+  }
+
+  /*
+   * Encrypt a value so that it can be decrypted by all nodes in the
+   * subtree with the indicated head, even if some leaves are
+   * excluded.
+   */
+  async encryptToSubtree(head, value) {
+    return this.mapSubtree(head, async node => {
+      return await ECKEM.encrypt(value, this.nodes[node].public);
+    });
+  }
+
+  /*
+   * Gather the heads of the populated subtrees below the specified
+   * subtree head
+   */
+  async gatherSubtree(head) {
+    return await this.mapSubtree(head, node => util.publicNode(this.nodes[node]));
+  }
+
   /*
    * Encrypt a fresh root value in a way that all participants in
-   * the group can decrypt (except for the current node).
+   * the group can decrypt, except for an excluded node.
    *
    * Arguments:
    *   * leaf - BufferSource with leaf secret
+   *   * except - index of the node to exclude
    *
    * Returns: Promise resolving to a TreeKEMCiphertext object:
    *   {
@@ -99,12 +152,12 @@ class TreeKEM {
    *     ciphertexts: [ ECKEMCiphertext ]
    *   }
    */
-  async encrypt(leaf) {
-    let dirpath = tm.dirpath(2 * this.index, this.size);
-    let copath = tm.copath(2 * this.index, this.size);
+  async encrypt(leaf, except) {
+    let dirpath = tm.dirpath(2 * except, this.size);
+    let copath = tm.copath(2 * except, this.size);
 
     // Generate hashes up the tree
-    let privateNodes = await TreeKEM.hashUp(2 * this.index, this.size, leaf);
+    let privateNodes = await TreeKEM.hashUp(2 * except, this.size, leaf);
     let nodes = {};
     for (let n in privateNodes) {
       nodes[n] = util.publicNode(privateNodes[n]);
@@ -114,12 +167,21 @@ class TreeKEM {
     let ciphertexts = await Promise.all(copath.map(async (c, i) => {
       let p = tm.parent(c, this.size);
       let s = privateNodes[p].secret;
-      return ECKEM.encrypt(s, this.nodes[c].public);
+      return this.encryptToSubtree(c, s);
     }));
+
+    // Gather subtree heads 
+    // NB: This is not necessary if other members have built a copy
+    // of the tree.  Unlike `nodes`, it's not new.
+    let subtreeHeads = await Promise.all(copath.map(async n => {
+      return await this.gatherSubtree(n);
+    }));
+    subtreeHeads = subtreeHeads.reduce((a, b) => Object.assign(a, b));
 
     return {
       nodes: nodes,
       ciphertexts: ciphertexts,
+      subtreeHeads: subtreeHeads,
     };
   }
 
@@ -140,28 +202,59 @@ class TreeKEM {
    *   }
    */
   async decrypt(index, ciphertexts) {
+    console.log('>>> decrypt', index, ciphertexts);
     // These are the nodes that the sender encrypted to
     let senderSize = (index == this.size)? this.size + 1 : this.size;
     let copath = tm.copath(2 * index, senderSize);
+    console.log('--- decrypt');
 
     // These are the nodes that we should have private keys for
     let dirpath = tm.dirpath(2 * this.index, this.size);
     dirpath.push(tm.root(this.size));
+    console.log('--- decrypt');
 
     // Decrypt at the point where the dirpath and copath overlap
     let overlap = dirpath.filter(x => copath.includes(x))[0];
     let coIndex = copath.indexOf(overlap);
     let dirIndex = dirpath.indexOf(overlap);
-    let h = await ECKEM.decrypt(ciphertexts[coIndex], this.nodes[overlap].private);
+    let encryptions = ciphertexts[coIndex];
+    console.log('--- decrypt');
+
+    // Extract an encrypted value that we can decrypt, and decrypt it
+    let decNode = Object.keys(encryptions)
+                        .map(x => parseInt(x))
+                        .filter(x => dirpath.includes(x))[0];
+    let h = await ECKEM.decrypt(encryptions[decNode], this.nodes[decNode].private);
+    console.log('--- decrypt');
 
     // Hash up to the root (plus one if we're growing the tree)
+    let rootNode = tm.root(senderSize);
     let newDirpath = tm.dirpath(2 * this.index, senderSize);
-    newDirpath.push(tm.root(senderSize));
+    newDirpath.push(rootNode);
     let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
+    console.log('--- decrypt');
 
-    let root = tm.root(senderSize);
+    let root = {}
+    root[rootNode] = nodes[root];
+
+    console.log('<<< decrypt');
     return {
+      root: root,
       nodes: nodes,
+    }
+  }
+
+  /* 
+   * Remove a node from the tree, including its direct path
+   *
+   * Arguments:
+   *   index - Index of the node to remove
+   *
+   * Returns: None
+   */
+  remove(index) {
+    for (let n of tm.dirpath(2 * index, this.size)) {
+      delete this.nodes[n];
     }
   }
 
@@ -169,12 +262,17 @@ class TreeKEM {
    * Updates nodes in the tree.
    *
    * Arguments:
-   *   nodes - Dictionary of nodes to udpate: { Int: Node }
+   *   nodes - Dictionary of nodes to update: { Int: Node }
+   *   preserve - Whether existing nodes should be left alone
    *
    * Returns: None
    */
-  merge(nodes) {
+  merge(nodes, preserve) {
     for (let n in nodes) {
+      if (this.nodes[n] && preserve) {
+        continue;
+      }
+    
       this.nodes[n] = nodes[n];
     }
   }

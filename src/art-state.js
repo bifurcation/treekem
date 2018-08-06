@@ -76,7 +76,10 @@ class ARTState {
     return { path: path };
   }
   
-  remove(index) {/* TODO */}
+  async remove(index) {
+    /* TODO */
+    return {};
+  }
 
   get groupInitKey() {
     return {
@@ -103,7 +106,9 @@ class ARTState {
     await this.art.merge(update.path);
   }
   
-  handleRemove(remove) {/* TODO */}
+  async handleRemove(remove) {
+    /* TODO */
+  }
 }
 
 module.exports = ARTState;
