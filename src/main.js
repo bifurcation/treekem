@@ -7,6 +7,7 @@ window.tm = require('./tree-math');
 window.ART = require('./art');
 window.TKEM = require('./treekem');
 
+window.Tree = require('./tree');
 window.FlatState = require('./flat-state');
 window.TreeKEMState = require('./treekem-state');
 window.ARTState = require('./art-state');

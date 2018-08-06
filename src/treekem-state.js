@@ -102,6 +102,18 @@ class TreeKEMState {
     };
   }
 
+  async move(leaf, index, copath) {
+    this.tkem.merge(copath, true);
+    let ct = await this.tkem.encrypt(leaf, index);
+    return {
+      from: this.index,
+      to: index,
+      ciphertexts: ct.ciphertexts,
+      nodes: ct.nodes,
+      subtreeHeads: ct.subtreeHeads,
+    };
+  }
+
   get groupInitKey() {
     return {
       size: this.tkem.size,
@@ -136,9 +148,25 @@ class TreeKEMState {
   
   async handleRemove(remove) {
     let pt = await this.tkem.decrypt(remove.index, remove.ciphertexts);
+    this.tkem.remove(remove.index);
     this.tkem.merge(pt.root);
     this.tkem.merge(remove.subtreeHeads, true);
-    this.tkem.remove(remove.index);
+  }
+
+  async handleSelfMove(move, leaf) {
+    console.log(">>> handleSelfMove");
+    let privateNodes = await TreeKEM.hashUp(2 * move.to, this.tkem.size, leaf);
+    this.tkem.remove(move.from);
+    this.tkem.merge(privateNodes);
+    this.tkem.index = move.to;
+  }
+
+  async handleMove(move) {
+    console.log(">>> handleMove");
+    let pt = await this.tkem.decrypt(move.to, move.ciphertexts);
+    this.tkem.remove(move.from);
+    this.tkem.merge(move.nodes);
+    this.tkem.merge(pt.nodes);
   }
 }
 

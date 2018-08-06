@@ -30,6 +30,7 @@ let stateTypeLegends = {
 let StateType = FlatState;
 let members = [];
 let renderers = [];
+let treeCache = new Tree();
 
 async function init() {
   $("div.tree").remove();
@@ -39,6 +40,8 @@ async function init() {
 
   let leaf = base64.random(32);
   let creator = await StateType.oneMemberGroup(leaf);
+  treeCache.size = 1;
+  treeCache.merge(creator.nodes);
   addMember(creator);
 }
 
@@ -85,15 +88,22 @@ function addMember(m) {
   $("#buttons").append(ubutton);
 
   // Add a delete button
-  if (index != 0) {
-    let rbutton = $(`<button class="remove">Remove(${index})</button>`);
-    rbutton.attr("id", `btn-remove-${index}`);
-    rbutton.click(lockWrap(() => { return remove(index); }));
-    $("#buttons").append(rbutton);
-  }
+  let rbutton = $(`<button class="remove">Remove(${index})</button>`);
+  rbutton.attr("id", `btn-remove-${index}`);
+  rbutton.click(lockWrap(() => { return remove(index); }));
+  $("#buttons").append(rbutton);
+
+  // Add a move button
+  let mbutton = $(`<button class="move">Move(${index})</button>`);
+  mbutton.attr("id", `btn-move-${index}`);
+  mbutton.click(lockWrap(() => { return moveToLowestVacant(index); }));
+  $("#buttons").append(mbutton);
 
   // Add padding
   $("#buttons").append(document.createTextNode(' '));
+
+  // Activate all buttons
+  $("#buttons button").attr('disabled', false);
 }
 
 function removeMember(index) {
@@ -105,6 +115,48 @@ function removeMember(index) {
   $(`#tree-${index}`).remove();
   $(`#btn-update-${index}`).remove();
   $(`#btn-remove-${index}`).remove();
+  $(`#btn-move-${index}`).remove();
+
+  if (members.length == 1) {
+    let lastRemaining = members[0].index;
+    $(`#btn-remove-${lastRemaining}`).attr('disabled', true);
+  }
+}
+
+function moveMember(index, newIndex) {
+  renderers[newIndex] = renderers[index];
+
+  // Renumber the associated DOM elements
+  $(`#tree-${index}`).attr('id', `tree-${newIndex}`);
+  $(`#btn-update-${index}`).attr('id', `btn-update-${newIndex}`);
+  $(`#btn-remove-${index}`).attr('id', `btn-remove-${newIndex}`);
+  $(`#btn-move-${index}`).attr('id', `btn-move-${newIndex}`);
+
+  // Relabel everything
+  $(`#tree-${newIndex} div.number`).text(newIndex);
+  $(`#btn-update-${newIndex}`).text(`Update(${newIndex})`);
+  $(`#btn-remove-${newIndex}`).text(`Remove(${newIndex})`);
+  $(`#btn-move-${newIndex}`).text(`Move(${newIndex})`);
+
+  // Reassign actions
+  $(`#btn-update-${newIndex}`).unbind('click');
+  $(`#btn-remove-${newIndex}`).unbind('click');
+  $(`#btn-move-${newIndex}`).unbind('click');
+  $(`#btn-update-${newIndex}`).click(lockWrap(() => { return update(newIndex); }));
+  $(`#btn-remove-${newIndex}`).click(lockWrap(() => { return remove(newIndex); }));
+  $(`#btn-move-${newIndex}`).click(lockWrap(() => { return moveToLowestVacant(newIndex); }));
+}
+
+function lowestVacant() {
+  let memberIx = members.map(m => m.index);
+  let allIx = [...Array(treeCache.size).keys()];
+  return allIx.filter(i => !memberIx.includes(i))
+              .reduce((a, b) => (a < b)? a : b, Infinity);
+}
+
+function highestOccupied() {
+  return members.map(m => m.index)
+                .reduce((a, b) => (a > b)? a : b, -Infinity);
 }
 
 async function userAdd() {
@@ -117,6 +169,9 @@ async function userAdd() {
     await m.handleUserAdd(ua);
     renderers[m.index].render(m.size, m.nodes);
   }
+
+  treeCache.size += 1;
+  treeCache.merge(ua.nodes);
 
   let joiner = await StateType.fromUserAdd(leaf, ua, gik);
   addMember(joiner);
@@ -134,6 +189,9 @@ async function groupAdd() {
     renderers[m.index].render(m.size, m.nodes);
   }
 
+  treeCache.size += 1;
+  treeCache.merge(ga.forGroup.nodes);
+
   let joiner = await StateType.fromGroupAdd(initLeaf, ga);
   addMember(joiner);
 }
@@ -143,7 +201,7 @@ async function update(k) {
   let member = members.filter(m => m.index == k)[0];
   let update = await member.update(leaf);
   
-  for (m2 of members) {
+  for (let m2 of members) {
     if (m2.index == k) {
       await m2.handleSelfUpdate(update, leaf);
     } else {
@@ -151,6 +209,8 @@ async function update(k) {
     }
     renderers[m2.index].render(m2.size, m2.nodes);
   }
+  
+  treeCache.merge(update.nodes);
 }
 
 async function remove(k) {
@@ -160,7 +220,7 @@ async function remove(k) {
   let removed = members.filter(m => m.index == k)[0];
   let remove = await remover.remove(leaf, k, removed.copath);
 
-  for (m2 of members) {
+  for (let m2 of members) {
     if (m2.index == k) {
       continue;
     }
@@ -168,8 +228,40 @@ async function remove(k) {
     await m2.handleRemove(remove);
     renderers[m2.index].render(m2.size, m2.nodes);
   }
+  
+  treeCache.remove(k);
 
   removeMember(k);
+}
+
+async function moveToLowestVacant(k) {
+  let minVacant = lowestVacant();
+  if (k < minVacant) {
+    console.log(`Member ${k} is already in the lowest available slot`);
+    return
+  }
+
+  let leaf = base64.random(32);
+  let copath = treeCache.copath(minVacant);
+  let mover = members.filter(m => m.index == k)[0];
+  let move = await mover.move(leaf, minVacant, copath);
+
+  console.log("members", members);
+  console.log("move", move);
+  for (let m2 of members) {
+    if (m2.index == k) {
+      await m2.handleSelfMove(move, leaf);
+      renderers[k].render(m2.size, m2.nodes);
+    } else {
+      await m2.handleMove(move);
+      renderers[m2.index].render(m2.size, m2.nodes);
+    }
+  }
+
+  treeCache.remove(move.from);
+  treeCache.merge(move.nodes);
+
+  moveMember(k, minVacant);
 }
 
 let chaosEnabled = false;

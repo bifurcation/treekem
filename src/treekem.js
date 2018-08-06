@@ -232,7 +232,7 @@ class TreeKEM {
     let nodes = await TreeKEM.hashUp(newDirpath[dirIndex+1], senderSize, h);
 
     let root = {}
-    root[rootNode] = nodes[root];
+    root[rootNode] = nodes[rootNode];
 
     return {
       root: root,
