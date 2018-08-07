@@ -31,6 +31,8 @@ let StateType = FlatState;
 let members = [];
 let renderers = {};
 let treeCache = new Tree();
+let operationLock = false;
+let compactEnabled = false;
 
 async function init() {
   $("div.tree").remove();
@@ -53,17 +55,15 @@ function selectStateType(label) {
   return init();
 }
 
-let operationLock = false;
-
 function lockWrap(action) {
   return () => {
     operationLock = true;
-    $("button").prop("disabled", true);
-    $("#chaos").prop("disabled", false);
+    $("#buttons button").prop("disabled", true);
+    $("#buttons button.persistent").prop("disabled", false);
     action()
       .then(() => {
         operationLock = false;
-        $("button").prop("disabled", false);
+        $("#buttons button").prop("disabled", false);
       });
   };
 }
@@ -246,6 +246,10 @@ async function remove(k) {
   treeCache.remove(k);
 
   removeMember(k);
+
+  if (compactEnabled) {
+    compact();
+  }
 }
 
 async function moveToLowestVacant(k) {
@@ -280,10 +284,16 @@ async function moveToLowestVacant(k) {
   }
 }
 
+async function compact() {
+  for (let i of members.map(m => m.index).sort()) {
+    await moveToLowestVacant(i);
+  }
+}
+
 let chaosEnabled = false;
 let chaosCount = 0;
-const chaosOnLabel = "&#x1F608;"; // U+1F608 SMILING FACE WITH HORNS
-const chaosOffLabel = "&#x1F610";   // U+1F610 NEUTRAL FACE
+const chaosOnLabel = "&#x1F608;";  // U+1F608 SMILING FACE WITH HORNS
+const chaosOffLabel = "&#x1F610;"; // U+1F610 NEUTRAL FACE
 const chaosDistribution = {
   "add": 0.3,
   "update": 0.5,
@@ -325,6 +335,9 @@ async function startChaos() {
   }
 }
 
+const compactOnLabel = "&#x1F312;";  // U+1F312 WAXING CRESENT MOON
+const compactOffLabel = "&#x1F31D;"; // U+1F312 FULL MOON FACE
+
 $(document).ready(async () => {
   for (let label in stateTypes) {
     let id = "stateType-" + label;
@@ -338,12 +351,18 @@ $(document).ready(async () => {
 
   $("#chaos").html(chaosOffLabel);
   $("#chaos").click(() => {
-    $("#chaos").html((chaosEnabled)? chaosOffLabel : chaosOnLabel);
     chaosEnabled = !chaosEnabled;
+    $("#chaos").html((chaosEnabled)? chaosOnLabel : chaosOffLabel);
     
     if (chaosEnabled) {
       startChaos();
     }
+  });
+
+  $("#compact").html(compactOffLabel);
+  $("#compact").click(() => {
+    compactEnabled = !compactEnabled;
+    $("#compact").html((compactEnabled)? compactOnLabel : compactOffLabel);
   });
   
   selectStateType("TreeKEM");
@@ -413,7 +432,8 @@ div.tree svg {
   <div id="github"><a href="https://github.com/bifurcation/treekem">GitHub</a></div>
   <div id="stateTypes"></div>
   <div id="buttons">
-    <button id="chaos"></button>
+    <button id="chaos" title="chaos mode" class="persistent"></button>
+    <button id="compact" title="auto-compact" class="persistent"></button>
     <button id="userAdd" class="add">UserAdd</button>
     <button id="groupAdd" class="add">GroupAdd</button>
   </div>

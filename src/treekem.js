@@ -244,11 +244,7 @@ class TreeKEM {
     }
 
     let width = tm.nodeWidth(size);
-    Object.keys(this.nodes)
-          .map(n => parseInt(n))
-          .filter(n => n > width)
-          .map(n => delete this.nodes[n]);
-
+    this.nodes = this.nodes.slice(0, width);
     this.size = size;
   }
 
